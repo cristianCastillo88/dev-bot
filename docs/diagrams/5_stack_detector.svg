@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 460" width="100%" height="100%">
+  <defs>
+    <style>
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 16px; font-weight: 700; fill: #ffffff; }
+      .subtitle { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; fill: #8b949e; }
+      .desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; fill: #c9d1d9; }
+      .arrow { stroke: #58a6ff; stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrow-b" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#58a6ff" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="460" fill="#0d1117" rx="12" />
+  <rect x="1" y="1" width="798" height="458" fill="none" stroke="#30363d" stroke-width="1.5" rx="12" />
+
+  <text x="400" y="38" text-anchor="middle" class="title" style="font-size: 18px; fill: #58a6ff;">DETECCIÓN Y ADAPTACIÓN DE STACK POLÍGLOTA</text>
+  <text x="400" y="58" text-anchor="middle" class="subtitle">Inspección de archivos raíz y desacoplamiento de comandos en IBuildAndTestStrategy</text>
+
+  <!-- Root Inspection Box -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="95" width="200" height="330" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+    <text x="130" y="125" text-anchor="middle" class="title" style="font-size: 14px; fill: #79c0ff;">Inspección Raíz</text>
+    <text x="130" y="145" text-anchor="middle" class="subtitle">ProjectStackDetector</text>
+
+    <rect x="45" y="165" width="170" height="42" rx="6" fill="#0d1117" stroke="#238636" />
+    <text x="130" y="190" text-anchor="middle" class="desc" style="font-weight: 600; fill: #3fb950;">*.sln / *.csproj</text>
+
+    <rect x="45" y="220" width="170" height="42" rx="6" fill="#0d1117" stroke="#d29922" />
+    <text x="130" y="245" text-anchor="middle" class="desc" style="font-weight: 600; fill: #f2cc60;">package.json</text>
+
+    <rect x="45" y="275" width="170" height="42" rx="6" fill="#0d1117" stroke="#da3633" />
+    <text x="130" y="300" text-anchor="middle" class="desc" style="font-weight: 600; fill: #ff7b72;">pom.xml / gradle</text>
+
+    <rect x="45" y="330" width="170" height="42" rx="6" fill="#0d1117" stroke="#388bfd" />
+    <text x="130" y="355" text-anchor="middle" class="desc" style="font-weight: 600; fill: #79c0ff;">requirements.txt</text>
+
+    <rect x="45" y="385" width="170" height="28" rx="6" fill="#0d1117" stroke="#30363d" />
+    <text x="130" y="403" text-anchor="middle" class="subtitle">Otro / Desconocido</text>
+  </g>
+
+  <!-- Right: Strategies Column -->
+  <g filter="url(#shadow)">
+    <!-- DotNet -->
+    <rect x="330" y="95" width="430" height="70" rx="8" fill="#161b22" stroke="#238636" stroke-width="1.5" />
+    <text x="350" y="122" class="title" style="font-size: 14px; fill: #3fb950;">DotNetStrategy (.NET / C#)</text>
+    <text x="350" y="142" class="desc">• Tests: <code>dotnet test</code> | Compilación: <code>dotnet build</code></text>
+    <text x="350" y="156" class="subtitle">Linter: dotnet format --verify-no-changes | Guías: async/await, PascalCase</text>
+
+    <!-- NodeNpm -->
+    <rect x="330" y="175" width="430" height="70" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1.5" />
+    <text x="350" y="202" class="title" style="font-size: 14px; fill: #f2cc60;">NodeNpmStrategy (Node.js / TypeScript / JS)</text>
+    <text x="350" y="222" class="desc">• Tests: <code>npm test</code> | Compilación: <code>npm run build</code></text>
+    <text x="350" y="236" class="subtitle">Linter: npm run lint | Guías: strict types, camelCase, import/export</text>
+
+    <!-- Maven -->
+    <rect x="330" y="255" width="430" height="70" rx="8" fill="#161b22" stroke="#da3633" stroke-width="1.5" />
+    <text x="350" y="282" class="title" style="font-size: 14px; fill: #ff7b72;">MavenStrategy (Java)</text>
+    <text x="350" y="302" class="desc">• Tests: <code>mvn test</code> (o <code>gradle test</code>) | Compilación: <code>mvn compile</code></text>
+    <text x="350" y="316" class="subtitle">Linter: mvn checkstyle:check | Guías: JavaBeans, Optional, Streams</text>
+
+    <!-- Python -->
+    <rect x="330" y="335" width="430" height="70" rx="8" fill="#161b22" stroke="#388bfd" stroke-width="1.5" />
+    <text x="350" y="362" class="title" style="font-size: 14px; fill: #79c0ff;">PythonStrategy (Python)</text>
+    <text x="350" y="382" class="desc">• Tests: <code>pytest</code> | Compilación: <code>python -m py_compile</code></text>
+    <text x="350" y="396" class="subtitle">Linter: flake8 . | Guías: PEP 8, type hints, snake_case</text>
+  </g>
+
+  <!-- Connecting Lines -->
+  <path d="M 215 185 L 330 130" class="arrow" marker-end="url(#arrow-b)" />
+  <path d="M 215 240 L 330 210" class="arrow" marker-end="url(#arrow-b)" />
+  <path d="M 215 295 L 330 290" class="arrow" marker-end="url(#arrow-b)" />
+  <path d="M 215 350 L 330 370" class="arrow" marker-end="url(#arrow-b)" />
+
+</svg>

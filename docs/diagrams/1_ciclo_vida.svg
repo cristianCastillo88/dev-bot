@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200" width="100%" height="100%">
+  <defs>
+    <style>
+      .node-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; fill: #f0f6fc; font-weight: 500; text-anchor: middle; }
+      .node-subtext { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; fill: #8b949e; text-anchor: middle; }
+      .node-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 14px; fill: #ffffff; font-weight: 700; text-anchor: middle; }
+      .edge-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; fill: #c9d1d9; font-weight: 600; }
+      .arrow { stroke: #58a6ff; stroke-width: 2; fill: none; }
+      .arrow-green { stroke: #3fb950; stroke-width: 2; fill: none; }
+      .arrow-red { stroke: #f85149; stroke-width: 2; fill: none; }
+      .arrow-orange { stroke: #d29922; stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#58a6ff" />
+    </marker>
+    <marker id="arrow-green-m" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#3fb950" />
+    </marker>
+    <marker id="arrow-red-m" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#f85149" />
+    </marker>
+    <marker id="arrow-orange-m" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#d29922" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="1200" fill="#0d1117" rx="12" />
+  <rect x="1" y="1" width="798" height="1198" fill="none" stroke="#30363d" stroke-width="1.5" rx="12" />
+
+  <!-- Header Title -->
+  <text x="400" y="38" class="node-title" style="font-size: 18px; fill: #58a6ff;">CICLO DE VIDA CON DESCOMPOSICIÓN JERÁRQUICA Y CHECKPOINTS</text>
+  <text x="400" y="58" class="node-subtext" style="font-size: 12px; fill: #8b949e;">Orquestación con Planner, Bucle de Hitos Atómicos y Rollbacks Selectivos</text>
+
+  <!-- 1. Inicio -->
+  <rect x="250" y="75" width="300" height="40" rx="20" fill="#1f6feb" stroke="#58a6ff" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="100" class="node-title">devbot run "Requerimiento" (--mode)</text>
+
+  <!-- Arrow -->
+  <path d="M 400 115 L 400 138" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- 2. Inicialización & Stack & Memoria -->
+  <rect x="220" y="140" width="360" height="54" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="400" y="162" class="node-title">1. Inicialización, Stack &amp; Memoria</text>
+  <text x="400" y="180" class="node-subtext">Detecta Stack | Carga .devbotrules y repo_map.json</text>
+
+  <!-- Arrow -->
+  <path d="M 400 194 L 400 218" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- 3. Rama Git -->
+  <rect x="240" y="220" width="320" height="46" rx="8" fill="#161b22" stroke="#388bfd" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="400" y="240" class="node-title">2. Aislamiento Git: feature/{slug}-{id}</text>
+  <text x="400" y="256" class="node-subtext">Checkout rama aislada + Registro en .agent/task.md</text>
+
+  <!-- Arrow -->
+  <path d="M 400 266 L 400 292" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- 4. Scout Agent -->
+  <rect x="220" y="294" width="360" height="54" rx="8" fill="#0c2d6b" stroke="#58a6ff" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="316" class="node-title">🔍 Fase 1: Scout Agent (Exploración Read-Only)</text>
+  <text x="400" y="335" class="node-subtext">ListFiles, SearchCode, ReadFile ➔ Genera scout_report.md</text>
+
+  <!-- Arrow -->
+  <path d="M 400 348 L 400 374" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- 5. Decision HITL -->
+  <polygon points="400,376 530,414 400,452 270,414" fill="#2d2200" stroke="#d29922" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="410" class="node-title" style="fill: #f2cc60;">¿Aprobación Humana?</text>
+  <text x="400" y="426" class="node-subtext" style="fill: #e3b341;">(o flag --yes / -y)</text>
+
+  <!-- HITL Options: Abort -->
+  <path d="M 270 414 L 140 414" class="arrow-red" marker-end="url(#arrow-red-m)" />
+  <text x="185" y="406" class="edge-label" fill="#f85149">Abortar</text>
+
+  <!-- Rollback box Left -->
+  <rect x="20" y="390" width="120" height="48" rx="8" fill="#490202" stroke="#f85149" stroke-width="1.5" />
+  <text x="80" y="410" class="node-title" style="font-size: 11px; fill: #ff7b72;">Rollback Git</text>
+  <text x="80" y="426" class="node-subtext" style="font-size: 10px;">Borra rama</text>
+
+  <!-- HITL: Approve -->
+  <path d="M 400 452 L 400 478" class="arrow-green" marker-end="url(#arrow-green-m)" />
+  <text x="410" y="468" class="edge-label" fill="#3fb950">Aprobar</text>
+
+  <!-- 6. Planner Agent -->
+  <rect x="200" y="480" width="400" height="60" rx="8" fill="#1b1433" stroke="#a371f7" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="504" class="node-title" style="fill: #d2a8ff;">📋 Fase 2: Planner Agent (Descomposición en Hitos)</text>
+  <text x="400" y="524" class="node-subtext">Divide en 1..N hitos atómicos (máx 2-3 archivos) ➔ plan.json &amp; plan.md</text>
+
+  <!-- Arrow -->
+  <path d="M 400 540 L 400 568" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- MILESTONE LOOP CONTAINER -->
+  <rect x="180" y="570" width="440" height="420" rx="12" fill="#0d1524" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="6,4" />
+  <text x="200" y="594" class="node-title" style="fill: #58a6ff; font-size: 13px; text-anchor: start;">📍 Bucle de Hitos Secuenciales (Hito 1 .. N)</text>
+
+  <!-- 7. Coder Agent for Milestone -->
+  <rect x="220" y="610" width="360" height="58" rx="8" fill="#1b1f23" stroke="#f0883e" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="634" class="node-title" style="fill: #ffa657;">🔨 Coder Agent (Confinado al Hito Activo)</text>
+  <text x="400" y="652" class="node-subtext">ApplyDiff o WriteFile confinado a los targetFiles del hito</text>
+
+  <!-- Arrow -->
+  <path d="M 400 668 L 400 690" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- 8. Reviewer Agent for Milestone -->
+  <rect x="220" y="692" width="360" height="56" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="400" y="714" class="node-title" style="fill: #79c0ff;">🧪 Reviewer Agent (Verificación del Hito)</text>
+  <text x="400" y="732" class="node-subtext">Ejecuta el verificationCommand específico del hito</text>
+
+  <!-- Arrow -->
+  <path d="M 400 748 L 400 770" class="arrow" marker-end="url(#arrow-blue)" />
+
+  <!-- 9. Decision Milestone Tests -->
+  <polygon points="400,772 520,806 400,840 280,806" fill="#161b22" stroke="#388bfd" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="802" class="node-title" style="font-size: 12px;">¿Hito Verificado?</text>
+  <text x="400" y="818" class="node-subtext">ExitCode == 0</text>
+
+  <!-- Reintento Hito -->
+  <path d="M 520 806 L 600 806 L 600 639 L 582 639" class="arrow-orange" marker-end="url(#arrow-orange-m)" />
+  <text x="525" y="796" class="edge-label" fill="#f0883e">No (&lt; 3)</text>
+
+  <!-- Falla hito > 3 -> Rollback Selectivo a Checkpoint Verde -->
+  <path d="M 280 806 L 140 806 L 140 439" class="arrow-red" marker-end="url(#arrow-red-m)" />
+  <text x="145" y="798" class="edge-label" fill="#f85149">Fallo tras 3 reintentos</text>
+
+  <!-- Hito Passed -> Checkpoint Commit -->
+  <path d="M 400 840 L 400 864" class="arrow-green" marker-end="url(#arrow-green-m)" />
+  <text x="410" y="856" class="edge-label" fill="#3fb950">Sí: Audit &amp; Checkpoint</text>
+
+  <!-- 10. Checkpoint Commit Box -->
+  <rect x="220" y="866" width="360" height="54" rx="8" fill="#143621" stroke="#3fb950" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="400" y="888" class="node-title" style="fill: #56d364;">💾 Git Checkpoint: feat(scope): hito</text>
+  <text x="400" y="906" class="node-subtext">Commit atómico y punto de restauración verificado</text>
+
+  <!-- Loop back for next milestone -->
+  <path d="M 580 893 L 640 893 L 640 600 L 400 600" class="arrow-blue" stroke-dasharray="4,4" marker-end="url(#arrow-blue)" />
+  <text x="645" y="740" class="edge-label" fill="#58a6ff">Siguiente Hito</text>
+
+  <!-- Arrow Out of Loop -->
+  <path d="M 400 920 L 400 1020" class="arrow-green" marker-end="url(#arrow-green-m)" />
+  <text x="410" y="1005" class="edge-label" fill="#3fb950">Todos los hitos completados</text>
+
+  <!-- 11. Final Push & Draft PR -->
+  <rect x="180" y="1022" width="440" height="66" rx="8" fill="#143621" stroke="#3fb950" stroke-width="2" filter="url(#shadow)" />
+  <text x="400" y="1048" class="node-title" style="fill: #56d364; font-size: 15px;">🚀 Publicación Remota &amp; Draft Pull Request</text>
+  <text x="400" y="1068" class="node-subtext">PR lista todos los hitos y commits | Actualiza repo_map.json</text>
+
+</svg>

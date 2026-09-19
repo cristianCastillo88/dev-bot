@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 460" width="100%" height="100%">
+  <defs>
+    <style>
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 16px; font-weight: 700; fill: #ffffff; }
+      .desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; fill: #8b949e; line-height: 1.4; }
+      .badge-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 700; fill: #ffffff; }
+    </style>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="460" fill="#0d1117" rx="12" />
+  <rect x="1" y="1" width="798" height="458" fill="none" stroke="#30363d" stroke-width="1.5" rx="12" />
+
+  <text x="400" y="38" text-anchor="middle" class="title" style="font-size: 18px; fill: #58a6ff;">MODOS OPERACIONALES ESPECIALIZADOS (--mode)</text>
+  <text x="400" y="58" text-anchor="middle" class="desc">Ajustan la directiva del prompt y el prefijo de commit semántico según el objetivo</text>
+
+  <!-- 1. Feature -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="85" width="340" height="165" rx="8" fill="#161b22" stroke="#238636" stroke-width="1.5" />
+    <rect x="55" y="100" width="60" height="24" rx="12" fill="#238636" />
+    <text x="85" y="116" text-anchor="middle" class="badge-text">feat:</text>
+    <text x="130" y="118" class="title" style="font-size: 15px; fill: #3fb950;">Feature (Nuevas Funciones)</text>
+    
+    <text x="55" y="145" class="desc">• Identifica puntos de extensión limpios y modulares.</text>
+    <text x="55" y="165" class="desc">• Implementa el nuevo requerimiento con diseño desacoplado.</text>
+    <text x="55" y="185" class="desc">• Exige la creación de nuevas pruebas que certifiquen el flujo.</text>
+    <text x="55" y="205" class="desc">• Default si no se especifica --mode.</text>
+  </g>
+
+  <!-- 2. Bug -->
+  <g filter="url(#shadow)">
+    <rect x="420" y="85" width="340" height="165" rx="8" fill="#161b22" stroke="#da3633" stroke-width="1.5" />
+    <rect x="435" y="100" width="55" height="24" rx="12" fill="#da3633" />
+    <text x="462" y="116" text-anchor="middle" class="badge-text">fix:</text>
+    <text x="505" y="118" class="title" style="font-size: 15px; fill: #f85149;">Bug (Corrección de Defectos)</text>
+    
+    <text x="435" y="145" class="desc">• Localiza la causa raíz del fallo sin suposiciones.</text>
+    <text x="435" y="165" class="desc">• Aplica el parche mínimo con el menor impacto colateral.</text>
+    <text x="435" y="185" class="desc">• Exige una prueba de regresión obligatoria que reproduzca el bug.</text>
+    <text x="435" y="205" class="desc">• Prioriza estabilidad y compatibilidad hacia atrás.</text>
+  </g>
+
+  <!-- 3. Refactor -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="270" width="340" height="165" rx="8" fill="#161b22" stroke="#8957e5" stroke-width="1.5" />
+    <rect x="55" y="285" width="75" height="24" rx="12" fill="#8957e5" />
+    <text x="92" y="301" text-anchor="middle" class="badge-text">refactor:</text>
+    <text x="145" y="303" class="title" style="font-size: 15px; fill: #d2a8ff;">Refactor (Deuda Técnica)</text>
+    
+    <text x="55" y="330" class="desc">• Identifica código duplicado, acoplamiento o baja legibilidad.</text>
+    <text x="55" y="350" class="desc">• Prohibido modificar contratos públicos o firmas de métodos.</text>
+    <text x="55" y="370" class="desc">• Mantiene intacto el comportamiento observable.</text>
+    <text x="55" y="390" class="desc">• Todas las pruebas existentes deben pasar al 100%.</text>
+  </g>
+
+  <!-- 4. Test -->
+  <g filter="url(#shadow)">
+    <rect x="420" y="270" width="340" height="165" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1.5" />
+    <rect x="435" y="285" width="60" height="24" rx="12" fill="#1f6feb" />
+    <text x="465" y="301" text-anchor="middle" class="badge-text">test:</text>
+    <text x="510" y="303" class="title" style="font-size: 15px; fill: #58a6ff;">Test (Cobertura de Pruebas)</text>
+    
+    <text x="435" y="330" class="desc">• Identifica ramas lógicas no cubiertas y casos de borde.</text>
+    <text x="435" y="350" class="desc">• Solo crea o modifica archivos de prueba (*Tests.cs, *.spec.ts).</text>
+    <text x="435" y="370" class="desc">• Prohibido alterar la lógica de negocio productiva.</text>
+    <text x="435" y="390" class="desc">• Verifica aserciones sólidas y no triviales.</text>
+  </g>
+
+</svg>

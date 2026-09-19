@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" width="100%" height="100%">
+  <defs>
+    <style>
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 16px; font-weight: 700; fill: #ffffff; }
+      .subtitle { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; fill: #8b949e; }
+      .desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; fill: #c9d1d9; }
+      .arrow { stroke: #58a6ff; stroke-width: 2; fill: none; }
+      .arrow-green { stroke: #3fb950; stroke-width: 2; fill: none; }
+      .arrow-red { stroke: #f85149; stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrow-b" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#58a6ff" />
+    </marker>
+    <marker id="arrow-g" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#3fb950" />
+    </marker>
+    <marker id="arrow-r" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#f85149" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="480" fill="#0d1117" rx="12" />
+  <rect x="1" y="1" width="798" height="478" fill="none" stroke="#30363d" stroke-width="1.5" rx="12" />
+
+  <text x="400" y="38" text-anchor="middle" class="title" style="font-size: 18px; fill: #58a6ff;">INTEGRACIÓN GIT, AUDITORÍA PRE-COMMIT Y ROLLBACK</text>
+  <text x="400" y="58" text-anchor="middle" class="subtitle">Aislamiento total de ramas de trabajo y protección estricta contra commits defectuosos o inseguros</text>
+
+  <!-- Left: Happy Path -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="90" width="340" height="350" rx="8" fill="#161b22" stroke="#238636" stroke-width="1.5" />
+    <rect x="55" y="105" width="110" height="24" rx="12" fill="#238636" />
+    <text x="110" y="121" text-anchor="middle" class="title" style="font-size: 11px;">FLUJO EXITOSO</text>
+
+    <!-- Steps -->
+    <text x="55" y="155" class="title" style="font-size: 13px; fill: #3fb950;">1. Creación de Rama Aislada</text>
+    <text x="55" y="172" class="desc"><code>git checkout -b feature/{slug}-{id}</code></text>
+
+    <text x="55" y="205" class="title" style="font-size: 13px; fill: #3fb950;">2. Auditoría Pre-Commit Aprobada</text>
+    <text x="55" y="222" class="desc">SecretScanner: 0 credenciales expuestas</text>
+    <text x="55" y="238" class="desc">Linter: Código formateado conforme al stack</text>
+
+    <text x="55" y="270" class="title" style="font-size: 13px; fill: #3fb950;">3. Commit Semántico por Archivo</text>
+    <text x="55" y="287" class="desc"><code>git commit -F &lt;msg_temp&gt;</code> (feat:, fix:, ...)</text>
+
+    <text x="55" y="320" class="title" style="font-size: 13px; fill: #3fb950;">4. Push Remoto</text>
+    <text x="55" y="337" class="desc"><code>git push -u origin feature/...</code></text>
+
+    <text x="55" y="370" class="title" style="font-size: 13px; fill: #3fb950;">5. Draft Pull Request</text>
+    <text x="55" y="387" class="desc">Crea PR esperando revisión y aprobación manual</text>
+    <text x="55" y="403" class="subtitle" style="fill: #7ee787;">*Jamás realiza auto-merge a main*</text>
+  </g>
+
+  <!-- Right: Rollback and Abort Path -->
+  <g filter="url(#shadow)">
+    <rect x="420" y="90" width="340" height="350" rx="8" fill="#161b22" stroke="#da3633" stroke-width="1.5" />
+    <rect x="435" y="105" width="130" height="24" rx="12" fill="#da3633" />
+    <text x="500" y="121" text-anchor="middle" class="title" style="font-size: 11px;">MECANISMO ROLLBACK</text>
+
+    <!-- Trigger conditions -->
+    <text x="435" y="155" class="title" style="font-size: 13px; fill: #f85149;">Disparadores de Aborto:</text>
+    <text x="435" y="175" class="desc">• Humano rechaza plan en HITL.</text>
+    <text x="435" y="195" class="desc">• Tests fallan tras 3 reintentos del Coder.</text>
+    <text x="435" y="215" class="desc">• SecretScanner detecta API Keys o tokens.</text>
+
+    <!-- Actions executed -->
+    <text x="435" y="260" class="title" style="font-size: 13px; fill: #ffa657;">Acciones Atómicas de Limpieza:</text>
+    <text x="435" y="282" class="desc">1. <code>git reset --hard HEAD</code></text>
+    <text x="450" y="298" class="subtitle">Descarta cualquier cambio no confirmado.</text>
+
+    <text x="435" y="325" class="desc">2. <code>git checkout &lt;originalBranch&gt;</code></text>
+    <text x="450" y="341" class="subtitle">Regresa a la rama inicial del desarrollador.</text>
+
+    <text x="435" y="368" class="desc">3. <code>git branch -D &lt;targetBranch&gt;</code></text>
+    <text x="450" y="384" class="subtitle">Elimina completamente la rama temporal fallida.</text>
+
+    <text x="435" y="415" class="desc" style="fill: #ff7b72; font-weight: 600;">➔ Repositorio 100% limpio y protegido.</text>
+  </g>
+
+</svg>

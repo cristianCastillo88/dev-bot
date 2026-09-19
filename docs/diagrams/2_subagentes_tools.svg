@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 620" width="100%" height="100%">
+  <defs>
+    <style>
+      .node-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; fill: #f0f6fc; }
+      .node-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; fill: #ffffff; font-weight: 700; }
+      .node-header { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 16px; font-weight: 700; }
+      .subtext { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; fill: #8b949e; }
+      .conn-line { stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#58a6ff" />
+    </marker>
+    <marker id="arrow-plan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#a371f7" />
+    </marker>
+    <marker id="arrow-coder" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#f0883e" />
+    </marker>
+    <marker id="arrow-rev" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#58a6ff" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="620" fill="#0d1117" rx="12" />
+  <rect x="1" y="1" width="798" height="618" fill="none" stroke="#30363d" stroke-width="1.5" rx="12" />
+
+  <text x="400" y="38" text-anchor="middle" class="node-header" style="fill: #58a6ff;">SUBAGENTES Y CATÁLOGO DE HERRAMIENTAS (TOOLS)</text>
+  <text x="400" y="58" text-anchor="middle" class="subtext">Asignación estricta de permisos según la responsabilidad de cada subagente</text>
+
+  <!-- Columna Izquierda: Subagentes -->
+  <text x="140" y="95" text-anchor="middle" class="node-header" style="fill: #79c0ff; font-size: 13px;">SUBAGENTES ESPECIALIZADOS</text>
+
+  <!-- Scout Box -->
+  <rect x="30" y="115" width="220" height="85" rx="8" fill="#0c2d6b" stroke="#58a6ff" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="140" y="142" text-anchor="middle" class="node-title">🔍 Scout Agent</text>
+  <text x="140" y="162" text-anchor="middle" class="subtext">Modo: Solo Lectura</text>
+  <text x="140" y="180" text-anchor="middle" class="subtext">Mapea repo y arquitectura</text>
+
+  <!-- Planner Box -->
+  <rect x="30" y="225" width="220" height="85" rx="8" fill="#1b1433" stroke="#a371f7" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="140" y="252" text-anchor="middle" class="node-title" style="fill: #d2a8ff;">📋 Planner Agent</text>
+  <text x="140" y="272" text-anchor="middle" class="subtext">Modo: Descomposición</text>
+  <text x="140" y="290" text-anchor="middle" class="subtext">Hitos atómicos (máx 2-3 archivos)</text>
+
+  <!-- Coder Box -->
+  <rect x="30" y="335" width="220" height="85" rx="8" fill="#2d1c08" stroke="#f0883e" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="140" y="362" text-anchor="middle" class="node-title" style="fill: #ffa657;">🔨 Coder Agent</text>
+  <text x="140" y="382" text-anchor="middle" class="subtext">Modo: Escritura Quirúrgica</text>
+  <text x="140" y="400" text-anchor="middle" class="subtext">Confinado al hito activo</text>
+
+  <!-- Reviewer Box -->
+  <rect x="30" y="445" width="220" height="85" rx="8" fill="#0d2238" stroke="#388bfd" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="140" y="472" text-anchor="middle" class="node-title" style="fill: #79c0ff;">🧪 Reviewer Agent</text>
+  <text x="140" y="492" text-anchor="middle" class="subtext">Modo: Verificación</text>
+  <text x="140" y="510" text-anchor="middle" class="subtext">Ejecuta VerificationCommand</text>
+
+  <!-- Columna Derecha: Tools -->
+  <text x="610" y="95" text-anchor="middle" class="node-header" style="fill: #7ee787; font-size: 13px;">HERRAMIENTAS KERNEL FUNCTION</text>
+
+  <!-- ReadFile -->
+  <rect x="440" y="115" width="330" height="52" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="455" y="137" class="node-title">ReadFile(path, startLine, endLine)</text>
+  <text x="455" y="154" class="subtext">Lectura segmentada de métodos y archivos</text>
+
+  <!-- ListFiles -->
+  <rect x="440" y="185" width="330" height="52" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="455" y="207" class="node-title">ListFiles(path, pattern)</text>
+  <text x="455" y="224" class="subtext">Ignora node_modules, bin, obj, .git</text>
+
+  <!-- SearchCode -->
+  <rect x="440" y="255" width="330" height="52" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="455" y="277" class="node-title">SearchCode(query, filePattern)</text>
+  <text x="455" y="294" class="subtext">Streaming de 1 pasada ultra rápido</text>
+
+  <!-- ApplyDiff -->
+  <rect x="440" y="325" width="330" height="52" rx="6" fill="#161b22" stroke="#f0883e" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="455" y="347" class="node-title" style="fill: #ffa657;">ApplyDiff(path, original, replacement)</text>
+  <text x="455" y="364" class="subtext">Tolerante a diferencias de indentación y saltos \r\n</text>
+
+  <!-- WriteFile -->
+  <rect x="440" y="395" width="330" height="52" rx="6" fill="#161b22" stroke="#f0883e" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="455" y="417" class="node-title" style="fill: #ffa657;">WriteFile(path, content)</text>
+  <text x="455" y="434" class="subtext">Creación de nuevos archivos con creación de dirs</text>
+
+  <!-- RunCommand -->
+  <rect x="440" y="465" width="330" height="52" rx="6" fill="#161b22" stroke="#388bfd" stroke-width="1.5" filter="url(#shadow)" />
+  <text x="455" y="487" class="node-title" style="fill: #79c0ff;">RunCommand(command, workingDir)</text>
+  <text x="455" y="504" class="subtext">Timeout controlado y cierre de stdin anti-cuelgues</text>
+
+  <!-- Conectores Scout (Azul) -->
+  <path d="M 250 145 L 340 145 L 432 135" class="conn-line" stroke="#58a6ff" marker-end="url(#arrow)" />
+  <path d="M 250 160 L 340 160 L 432 205" class="conn-line" stroke="#58a6ff" marker-end="url(#arrow)" />
+  <path d="M 250 175 L 340 175 L 432 275" class="conn-line" stroke="#58a6ff" marker-end="url(#arrow)" />
+
+  <!-- Conectores Planner (Púrpura) -->
+  <path d="M 250 255 L 330 255 L 330 150 L 432 150" class="conn-line" stroke="#a371f7" marker-end="url(#arrow-plan)" />
+  <path d="M 250 275 L 340 275 L 340 220 L 432 220" class="conn-line" stroke="#a371f7" marker-end="url(#arrow-plan)" />
+
+  <!-- Conectores Coder (Naranja) -->
+  <path d="M 250 360 L 320 360 L 320 160 L 432 160" class="conn-line" stroke="#f0883e" marker-end="url(#arrow-coder)" />
+  <path d="M 250 375 L 340 375 L 432 345" class="conn-line" stroke="#f0883e" marker-end="url(#arrow-coder)" />
+  <path d="M 250 395 L 340 395 L 432 415" class="conn-line" stroke="#f0883e" marker-end="url(#arrow-coder)" />
+
+  <!-- Conectores Reviewer (Azul Claro) -->
+  <path d="M 250 475 L 310 475 L 310 165 L 432 165" class="conn-line" stroke="#388bfd" marker-end="url(#arrow-rev)" />
+  <path d="M 250 500 L 340 500 L 432 490" class="conn-line" stroke="#388bfd" marker-end="url(#arrow-rev)" />
+
+</svg>
