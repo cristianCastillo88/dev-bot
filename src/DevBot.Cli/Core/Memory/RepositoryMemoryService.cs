@@ -97,7 +97,8 @@ public class RepositoryMemoryService : IRepositoryMemoryService
         {
             LastCommitHash = commitHash,
             LastScannedUtc = DateTime.UtcNow,
-            PrimaryLanguage = stackInfo.Language
+            PrimaryLanguage = stackInfo.Language,
+            BuildFilePath = stackInfo.DetectedFile
         };
 
         var entrypoints = new List<string>();

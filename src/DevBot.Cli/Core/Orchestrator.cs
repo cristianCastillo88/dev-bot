@@ -368,10 +368,27 @@ public class Orchestrator
 
         await _gitTools.Revert();
 
-        if (!string.IsNullOrEmpty(_context.OriginalBranch))
+        bool hasVerifiedCommits = _context.Plan != null && _context.Plan.Milestones.Any(m => !string.IsNullOrEmpty(m.CheckpointCommitHash));
+
+        if (hasVerifiedCommits)
         {
-            await _gitTools.CheckoutBranch(_context.OriginalBranch);
-            AnsiConsole.MarkupLine($"[dim]Restaurada la rama original '{Markup.Escape(_context.OriginalBranch)}'.[/]");
+            // Hay hitos completados y verificados (ej. Hito 1 y 2). Se preserva la rama en el último checkpoint verde
+            AnsiConsole.MarkupLine($"[bold yellow]ℹ [[Orchestrator]][/] Se preservó la rama '[cyan]{Markup.Escape(_context.TargetBranch)}[/]' en el último checkpoint verde con los hitos completados previamente.");
+        }
+        else
+        {
+            // No se completó ningún hito: volvemos a la rama original y eliminamos la rama temporal vacía
+            if (!string.IsNullOrEmpty(_context.OriginalBranch))
+            {
+                await _gitTools.CheckoutBranch(_context.OriginalBranch);
+                AnsiConsole.MarkupLine($"[dim]Restaurada la rama original '{Markup.Escape(_context.OriginalBranch)}'.[/]");
+            }
+
+            if (!string.IsNullOrEmpty(_context.TargetBranch) && _context.TargetBranch != _context.OriginalBranch)
+            {
+                await _gitTools.DeleteBranch(_context.TargetBranch);
+                AnsiConsole.MarkupLine($"[dim]Eliminada rama temporal huérfana '{Markup.Escape(_context.TargetBranch)}'.[/]");
+            }
         }
 
         PrintFailureSummary();

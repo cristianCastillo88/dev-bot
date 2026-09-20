@@ -56,9 +56,15 @@ public class DotNetStrategy : IBuildAndTestStrategy
 
     public string GetVerificationInstructions()
     {
-        return """
-            1. Execute the .NET test suite using `RunCommand` in TerminalTools with command 'dotnet test' (or command 'dotnet' and arguments 'test').
-            2. If there are compilation or build errors, run 'dotnet build' to inspect detailed diagnostic messages.
+        string targetArg = !string.IsNullOrWhiteSpace(_targetFile) ? $" \"{_targetFile}\"" : string.Empty;
+        string locationNote = !string.IsNullOrWhiteSpace(_targetFile)
+            ? $"\nIMPORTANT: The project or solution file is located at '{_targetFile}'. You MUST run commands targeting this exact file: `dotnet test \"{_targetFile}\"`\n"
+            : string.Empty;
+
+        return $"""
+            1. Execute the .NET test suite using `RunCommand` in TerminalTools with command: dotnet test{targetArg}
+            2. If there are compilation or build errors, run: dotnet build{targetArg} to inspect detailed diagnostic messages.
+            {locationNote}
             """;
     }
 

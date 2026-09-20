@@ -49,6 +49,7 @@ public class ReviewerAgent : SubagentBase
             DETECTED STACK:
             Language/Framework: {context.StackInfo.Language} ({context.StackInfo.StackType})
             Strategy: {context.Strategy.Name}
+            Target Solution/Project: {context.StackInfo.DetectedFile ?? "Repository Root"}
 
             OPERATIONAL MODE:
             {context.ModePolicy.DisplayName}

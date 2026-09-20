@@ -13,6 +13,7 @@ public class RepoMap
     public string LastCommitHash { get; set; } = string.Empty;
     public DateTime LastScannedUtc { get; set; } = DateTime.UtcNow;
     public string PrimaryLanguage { get; set; } = string.Empty;
+    public string? BuildFilePath { get; set; }
     public List<string> Entrypoints { get; set; } = new();
     public List<string> MainLayers { get; set; } = new();
     public List<RepoComponentInfo> Components { get; set; } = new();

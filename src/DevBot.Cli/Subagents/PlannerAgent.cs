@@ -31,13 +31,21 @@ public class PlannerAgent : SubagentBase
         string scoutReport = context.ReadScoutReport();
         string defaultVerifyCmd = context.StackInfo.BuildTool switch
         {
-            "dotnet" => "dotnet test",
+            "dotnet" => !string.IsNullOrWhiteSpace(context.StackInfo.DetectedFile)
+                ? $"dotnet test \"{context.StackInfo.DetectedFile}\""
+                : "dotnet test",
             "npm" => "npm test",
             "mvn" => "mvn test",
             "gradle" => "gradle test",
             "pytest" or "python" => "pytest",
-            _ => "dotnet test"
+            _ => !string.IsNullOrWhiteSpace(context.StackInfo.DetectedFile)
+                ? $"dotnet test \"{context.StackInfo.DetectedFile}\""
+                : "dotnet test"
         };
+
+        string detectedFileBlock = !string.IsNullOrWhiteSpace(context.StackInfo.DetectedFile)
+            ? $"\nPRIMARY BUILD/SOLUTION FILE: {context.StackInfo.DetectedFile}\n(MANDATORY: When generating VerificationCommand for milestones, ALWAYS target this exact file: `dotnet test \"{context.StackInfo.DetectedFile}\"`)\n"
+            : string.Empty;
 
         string localRulesBlock = !string.IsNullOrWhiteSpace(context.LocalRules)
             ? $"\nLOCAL REPOSITORY RULES (.devbotrules):\n{context.LocalRules}\n"
@@ -58,6 +66,7 @@ public class PlannerAgent : SubagentBase
             Language: {context.StackInfo.Language} ({context.StackInfo.StackType})
             Build Tool: {context.StackInfo.BuildTool}
             Default Verification Command: {defaultVerifyCmd}
+            {detectedFileBlock}
             {localRulesBlock}
             SCOUT TECHNICAL REPORT:
             {scoutReport}

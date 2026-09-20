@@ -104,6 +104,15 @@ public class GitTools
             : $"ERROR checking out branch '{branchName}': {result.Error}";
     }
 
+    [KernelFunction, Description("Deletes a git branch.")]
+    public async Task<string> DeleteBranch(string branchName)
+    {
+        var result = await RunGitAsync($"branch -D {branchName}");
+        return result.ExitCode == 0
+            ? $"SUCCESS: Deleted branch '{branchName}'."
+            : $"ERROR deleting branch '{branchName}': {result.Error}";
+    }
+
     [KernelFunction, Description("Stages specified modified files and commits them with the given commit message.")]
     public async Task<string> CommitFiles(IEnumerable<string> files, string message)
     {
