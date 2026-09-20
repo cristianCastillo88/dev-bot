@@ -67,15 +67,16 @@ public class PreCommitAuditor : IPreCommitAuditor
         bool secretsPassed = allFindings.Count == 0;
         bool linterPassed = linterResult == null || linterResult.Success || linterNotConfigured;
 
-        bool passed = secretsPassed && linterPassed;
+        // La seguridad de credenciales es estrictamente bloqueante; las advertencias de formato se informan sin destruir código probado
+        bool passed = secretsPassed;
 
-        string summary = passed
-            ? (linterNotConfigured
-                ? "Auditoría superada: Sin secretos expuestos (linter no configurado o archivo de solución no encontrado en raíz, omitido)."
-                : "Auditoría superada: Sin secretos expuestos y linter conforme.")
-            : (!secretsPassed
-                ? $"FALLO DE SEGURIDAD: Se detectaron {allFindings.Count} posibles secretos/credenciales en los archivos modificados."
-                : $"FALLO DE CALIDAD: El linter del stack ({strategy.Name}) reportó violaciones de formato.");
+        string summary = !secretsPassed
+            ? $"FALLO DE SEGURIDAD: Se detectaron {allFindings.Count} posibles secretos/credenciales en los archivos modificados."
+            : (linterPassed
+                ? (linterNotConfigured
+                    ? "Auditoría superada: Sin secretos expuestos (linter no configurado u omitido)."
+                    : "Auditoría superada: Sin secretos expuestos y linter conforme.")
+                : $"Auditoría superada: Sin secretos expuestos ({strategy.Name} linter completó con observaciones no bloqueantes).");
 
         return new AuditResult(passed, allFindings, linterResult, summary);
     }

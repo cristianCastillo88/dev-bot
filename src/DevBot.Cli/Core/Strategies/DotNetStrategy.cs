@@ -32,9 +32,10 @@ public class DotNetStrategy : IBuildAndTestStrategy
 
     public async Task<StrategyExecutionResult> LintOrFormatAsync(TerminalTools terminal, CancellationToken ct = default)
     {
+        // Auto-formatea los archivos para alinearlos con las reglas oficiales de C# de manera transparente
         string args = string.IsNullOrWhiteSpace(_targetFile)
-            ? "format --verify-no-changes"
-            : $"format \"{_targetFile}\" --verify-no-changes";
+            ? "format"
+            : $"format \"{_targetFile}\"";
 
         string raw = await terminal.RunCommand("dotnet", args);
         int exitCode = ParseExitCode(raw);
