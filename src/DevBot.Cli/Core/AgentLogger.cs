@@ -4,24 +4,11 @@ using System.Text.Json.Serialization;
 
 namespace DevBot.Cli.Core;
 
-public class LogEntry
-{
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-    public string AgentName { get; set; } = string.Empty;
-    public string EventType { get; set; } = string.Empty; // PhaseStart, PhaseEnd, ToolCall, ToolResult, ModelResponse, GitAction, Warning, Error
-    public string Message { get; set; } = string.Empty;
-    public Dictionary<string, object>? Details { get; set; }
-
-    public override string ToString()
-    {
-        string localTime = Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
-        string agentTag = string.IsNullOrWhiteSpace(AgentName) ? "General" : AgentName;
-        string detailStr = Details != null && Details.Count > 0 ? $" | {JsonSerializer.Serialize(Details)}" : "";
-        return $"[{localTime}] [{agentTag}] [{EventType}] {Message}{detailStr}";
-    }
-}
-
-public class AgentLogger
+/// <summary>
+/// Registrador estructurado de eventos y telemetría de DevBot.
+/// Escribe simultáneamente en archivos de texto plano (.log) y formatos estructurados (.json) bajo el directorio .agent/logs/.
+/// </summary>
+public sealed class AgentLogger
 {
     private readonly string _logsDir;
     private readonly string _latestLogPath;
@@ -29,9 +16,13 @@ public class AgentLogger
     private readonly string _latestJsonPath;
     private readonly string _sessionJsonPath;
 
-    private readonly List<LogEntry> _entries = new();
+    private readonly List<LogEntry> _entries = [];
     private readonly object _lock = new();
 
+    /// <summary>
+    /// Inicializa una nueva sesión de logging dentro del directorio .agent especificado.
+    /// </summary>
+    /// <param name="agentDir">Ruta al directorio .agent en la raíz del repositorio.</param>
     public AgentLogger(string agentDir)
     {
         _logsDir = Path.Combine(agentDir, "logs");
@@ -46,20 +37,34 @@ public class AgentLogger
         _latestJsonPath = Path.Combine(_logsDir, "latest.json");
         _sessionJsonPath = Path.Combine(_logsDir, $"devbot_{timestamp}.json");
 
-        // Clear or initialize latest.log for the new run
+        // Inicializa latest.log para la nueva corrida
         try
         {
             File.WriteAllText(_latestLogPath, $"=== DevBot Execution Log Started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}", Encoding.UTF8);
         }
         catch
         {
-            // Non-fatal if initial write fails
+            // No crítico si la escritura inicial falla por bloqueos transitorios
         }
     }
 
+    /// <summary>
+    /// Ruta física al archivo latest.log de la sesión activa.
+    /// </summary>
     public string LatestLogPath => _latestLogPath;
+
+    /// <summary>
+    /// Ruta física al archivo latest.json de la sesión activa.
+    /// </summary>
     public string LatestJsonPath => _latestJsonPath;
 
+    /// <summary>
+    /// Registra un evento de auditoría de forma atómica y thread-safe.
+    /// </summary>
+    /// <param name="agentName">Nombre del emisor del evento.</param>
+    /// <param name="eventType">Categoría del evento.</param>
+    /// <param name="message">Descripción del evento.</param>
+    /// <param name="details">Metadatos estructurados opcionales.</param>
     public void LogEvent(string agentName, string eventType, string message, Dictionary<string, object>? details = null)
     {
         var entry = new LogEntry
@@ -83,19 +88,25 @@ public class AgentLogger
             }
             catch
             {
-                // Non-fatal if append fails
+                // No crítico si el append falla
             }
         }
     }
 
+    /// <summary>
+    /// Obtiene una instantánea de solo lectura de todas las entradas registradas hasta el momento.
+    /// </summary>
     public IReadOnlyList<LogEntry> GetEntries()
     {
         lock (_lock)
         {
-            return _entries.ToList();
+            return [.. _entries];
         }
     }
 
+    /// <summary>
+    /// Exporta las entradas acumuladas en formato JSON estructurado indentado.
+    /// </summary>
     public void SaveJson()
     {
         lock (_lock)
@@ -113,7 +124,7 @@ public class AgentLogger
             }
             catch
             {
-                // Non-fatal if json save fails
+                // No crítico si la serialización falla
             }
         }
     }

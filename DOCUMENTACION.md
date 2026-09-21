@@ -1,22 +1,23 @@
 # DevBot.Cli - Manual Técnico de Arquitectura y Funcionamiento
 
-**DevBot.Cli** es un asistente de ingeniería de software autónomo y modular desarrollado en **C# y .NET 8**, impulsado por **Semantic Kernel** y estilizado mediante **Spectre.Console**. 
+**DevBot.Cli** es un asistente de ingeniería de software autónomo y modular desarrollado en **C# y .NET 8**, impulsado por **Microsoft Semantic Kernel**, **Google Gemini**, estilizado con **Spectre.Console** y orquestado mediante **Inyección de Dependencias** formal con `Microsoft.Extensions.DependencyInjection`.
 
-Su propósito es ejecutar tareas de desarrollo quirúrgicas sobre repositorios de código real: exploración arquitectónica, codificación de cambios mínimos, ejecución y validación de pruebas unitarias, auditoría de seguridad pre-commit y apertura de Pull Requests.
+Su propósito es ejecutar tareas de desarrollo quirúrgicas sobre repositorios de código real: exploración arquitectónica, descomposición en hitos, codificación de cambios mínimos, ejecución y validación determinista de pruebas unitarias, auditoría de seguridad pre-commit y apertura de Pull Requests listos para revisión humana.
 
 ---
 
 ## 📑 Tabla de Contenidos
 1. [Arquitectura General y Ciclo Agéntico](#1-arquitectura-general-y-ciclo-agéntico)
-2. [Subagentes Especializados](#2-subagentes-especializados)
-3. [Catálogo de Herramientas (Tools)](#3-catálogo-de-herramientas-tools)
-4. [Modos Operacionales (`--mode`)](#4-modos-operacionales---mode)
-5. [Sistema de Memoria Persistente y Reglas Locales](#5-sistema-de-memoria-persistente-y-reglas-locales)
-6. [Estrategias y Detección de Stack Políglota](#6-estrategias-y-detección-de-stack-políglota)
-7. [Interacción con Git, Auditoría Pre-Commit y Rollback](#7-interacción-con-git-auditoría-pre-commit-y-rollback)
-8. [Auditoría de Seguridad y Detección de Secretos](#8-auditoría-de-seguridad-y-detección-de-secretos)
-9. [Human-in-the-Loop (HITL)](#9-human-in-the-loop-hitl)
-10. [Guía Rápida de Uso en Línea de Comandos](#10-guía-rápida-de-uso-en-línea-de-comandos)
+2. [Inyección de Dependencias y Composition Root](#2-inyección-de-dependencias-y-composition-root)
+3. [Subagentes Especializados](#3-subagentes-especializados)
+4. [Catálogo de Herramientas (Tools)](#4-catálogo-de-herramientas-tools)
+5. [Modos Operacionales (`--mode`)](#5-modos-operacionales---mode)
+6. [Sistema de Memoria Persistente y Reglas Locales](#6-sistema-de-memoria-persistente-y-reglas-locales)
+7. [Estrategias y Detección de Stack Políglota](#7-estrategias-y-detección-de-stack-políglota)
+8. [Interacción con Git, Auditoría Pre-Commit y Rollback](#8-interacción-con-git-auditoría-pre-commit-y-rollback)
+9. [Auditoría de Seguridad y Detección de Secretos](#9-auditoría-de-seguridad-y-detección-de-secretos)
+10. [Human-in-the-Loop (HITL)](#10-human-in-the-loop-hitl)
+11. [Guía Rápida de Uso en Línea de Comandos](#11-guía-rápida-de-uso-en-línea-de-comandos)
 
 ---
 
@@ -30,22 +31,40 @@ DevBot implementa un flujo de ciclo de vida orquestado por `Orchestrator.cs`. El
 
 ---
 
-## 2. Subagentes Especializados
+## 2. Inyección de Dependencias, Factory Pattern y Composition Root
 
-DevBot no utiliza un único prompt generalista. Divide las responsabilidades en subagentes con contextos y plugins estrictamente delimitados:
+A partir de la versión 1.5+, DevBot implementa formalmente el principio de **Inversión de Dependencias (DIP)** y el **Patrón Factory** mediante `Microsoft.Extensions.DependencyInjection`:
 
-| Subagente | Responsabilidad Principal | Herramientas Asignadas | Salida Generada |
-| :--- | :--- | :--- | :--- |
-| **Scout Agent** | Analiza la arquitectura del repositorio, ubica archivos clave y redacta el plano técnico. Es **estrictamente de solo lectura**. | `ReadFile`, `ListFiles`, `SearchCode` | `.agent/scout_report.md` |
-| **Planner Agent** | Descompone tareas complejas de abajo hacia arriba (*Bottom-Up*) en hitos atómicos (máx 2-3 archivos) con comandos de verificación. | `ReadFile`, `ListFiles` | `.agent/plan.json`, `.agent/plan.md` |
-| **Coder Agent** | Aplica modificaciones quirúrgicas y mínimas confinadas al alcance del hito activo respetando `.devbotrules`. | `ReadFile`, `WriteFile`, `ApplyDiff` | Archivos modificados en disco |
-| **Reviewer Agent** | Ejecuta el comando de verificación específico del hito (`VerificationCommand`), captura errores y valida `ExitCode == 0`. | `RunCommand`, `ReadFile` | `.agent/review_results.md` |
+### Composition Root (`Program.cs`)
+`Program.cs` actúa como el único punto de composición de la aplicación:
+1. Parsea y valida opciones tipadas con `CliArgumentsParser`.
+2. Registra los contratos e implementaciones del dominio mediante el método de extensión `services.AddDevBotCore()`.
+3. Resuelve el orquestador desacopladamente a través de `IOrchestratorFactory` (`serviceProvider.GetRequiredService<IOrchestratorFactory>().Create(context)`), eliminando cualquier invocación reflexiva o Service Locator.
+4. Gestiona la cancelación cooperativa (Ctrl+C) asegurando la desuscripción del evento en bloque `finally`.
+
+### Ciclos de Vida Registrados:
+- **Singleton:** `IProjectStackDetector`, `IRepositoryMemoryService`, `IPreCommitAuditor`, `ICredentialStorageService`.
+- **Transient (Interfaces y Subagentes):** `IScoutAgent` / `ScoutAgent`, `IPlannerAgent` / `PlannerAgent`, `ICoderAgent` / `CoderAgent`, `IReviewerAgent` / `ReviewerAgent`.
+- **Transient (Orquestación):** `IOrchestratorFactory` / `OrchestratorFactory`, `Orchestrator`.
 
 ---
 
-## 3. Catálogo de Herramientas (Tools)
+## 3. Subagentes Especializados e Interfaces
 
-Las herramientas son funciones de C# decoradas con `[KernelFunction]` que Semantic Kernel expone al LLM en tiempo de ejecución.
+DevBot divide las responsabilidades en subagentes con contextos y herramientas estrictamente delimitados bajo el principio de mínimo privilegio e inversión de dependencias:
+
+| Subagente / Interfaz | Responsabilidad Principal | Herramientas Asignadas | Salida Generada |
+| :--- | :--- | :--- | :--- |
+| **`IScoutAgent`** (`ScoutAgent`) | Analiza la arquitectura del repositorio, ubica archivos clave y redacta el plano técnico. Es **estrictamente de solo lectura**. | `ReadFile`, `ListFiles`, `SearchCode` | `.agent/scout_report.md` |
+| **`IPlannerAgent`** (`PlannerAgent`) | Descompone tareas complejas de abajo hacia arriba (*Bottom-Up*) en hitos atómicos (máx 2-3 archivos) con comandos de verificación. | `ReadFile`, `ListFiles` | `.agent/plan.json`, `.agent/plan.md` |
+| **`ICoderAgent`** (`CoderAgent`) | Aplica modificaciones quirúrgicas y mínimas confinadas al alcance del hito activo respetando `.devbotrules`. | `ReadFile`, `WriteFile`, `ApplyDiff` | Archivos modificados en disco |
+| **`IReviewerAgent`** (`ReviewerAgent`) | Ejecuta el comando de verificación específico del hito (`VerificationCommand`), captura errores y valida `ExitCode == 0`. | `RunCommand`, `ReadFile` | `.agent/review_results.md` |
+
+---
+
+## 4. Catálogo de Herramientas (Tools)
+
+Las herramientas son funciones nativas de C# decoradas con `[KernelFunction]` que Semantic Kernel expone al LLM en tiempo de ejecución.
 
 ### Matriz de Herramientas por Agente
 
@@ -63,31 +82,31 @@ Las herramientas son funciones de C# decoradas con `[KernelFunction]` que Semant
 
 #### 3. `SearchCode(string query, string filePattern)`
 - **Uso:** Búsqueda textual o por patrones en el código base.
-- **Optimización:** Implementado mediante streaming (`File.ReadLines`) con lectura de una sola pasada por archivo, evitando cargar gigabytes de código en memoria RAM.
+- **Optimización:** Streaming con `File.ReadLines` en una sola pasada para evitar sobrecarga de memoria RAM.
 
 #### 4. `ApplyDiff(string filePath, string originalSnippet, string replacementSnippet)`
 - **Uso:** Modificación quirúrgica de archivos existentes.
-- **Robustez:** Cuenta con un algoritmo de **tolerancia a espacios en blanco e indentación** que localiza el bloque objetivo aun cuando el LLM emita pequeñas variaciones en la indentación de espacios/tabs o retornos de carro (`\r\n` vs `\n`).
+- **Robustez:** Algoritmo con **tolerancia a espacios en blanco e indentación** que localiza el bloque objetivo aun ante pequeñas variaciones en espacios/tabs o saltos de línea (`\r\n` vs `\n`).
 
 #### 5. `WriteFile(string filePath, string content)`
-- **Uso:** Creación de nuevos archivos o sobrescritura completa cuando se requiere un archivo nuevo desde cero.
+- **Uso:** Creación de nuevos archivos o reemplazo completo cuando se requiere un archivo nuevo desde cero.
 - **Seguridad:** Crea los directorios padre de forma recursiva si no existen.
 
 #### 6. `TerminalTools.RunCommand(string command, string workingDirectory)`
 - **Uso:** Ejecución de comandos del sistema operativo (compilación, pruebas unitarias, linters).
-- **Protección contra Bloqueos (Deadlocks):** Cierra inmediatamente el flujo `StandardInput` (`process.StandardInput.Close()`) para evitar que comandos interactivos que solicitan confirmación bloqueen el proceso. Implementa un timeout configurable.
+- **Protección contra Deadlocks:** Cierra inmediatamente `StandardInput` para evitar que comandos interactivos bloqueen el proceso. Implementa timeout configurable.
 
 ---
 
-## 4. Modos Operacionales (`--mode`)
+## 5. Modos Operacionales (`--mode`)
 
 DevBot ajusta el comportamiento y las directrices de los prompts según el objetivo de la misión:
 
 ![Modos Operacionales Especializados](docs/diagrams/3_modos_operacionales.svg)
 
 ### Auto-Detección y Forzado Manual (Override)
-- **Auto-Detección por defecto (`auto` o si se omite `--mode`):** DevBot analiza semánticamente la descripción de la tarea antes de iniciar. Si detecta términos de bug (`error`, `exception`, `fix`, `falla`, etc.) activa `bug`; si detecta términos de pruebas (`test`, `cobertura`, `assert`) activa `test`; si detecta refactorización (`refactor`, `optimizar`, `limpiar`) activa `refactor`; de lo contrario adopta `feature`.
-- **Forzado Manual:** Puedes anular la detección automática y forzar una política estricta indicando `--mode <feature|bug|refactor|test>`.
+- **Auto-Detección (`ModePolicyRegistry.DetectMode`):** Analiza semánticamente la descripción de la tarea antes de iniciar. Si detecta términos de bug activa `bug`; si detecta pruebas activa `test`; si detecta refactorización activa `refactor`; de lo contrario adopta `feature`.
+- **Forzado Manual:** Anula la detección automática indicando `--mode <feature|bug|refactor|test>`.
 
 ### Tabla Comparativa de Políticas
 
@@ -100,9 +119,7 @@ DevBot ajusta el comportamiento y las directrices de los prompts según el objet
 
 ---
 
-## 5. Sistema de Memoria Persistente y Reglas Locales
-
-DevBot no empieza de cero en cada ejecución ni ignora las convenciones del equipo.
+## 6. Sistema de Memoria Persistente y Reglas Locales
 
 ![Sistema de Memoria Persistente y Reglas Locales](docs/diagrams/4_memoria_reglas.svg)
 
@@ -115,55 +132,41 @@ Permite al equipo definir directrices técnicas que DevBot respetará rigurosame
 - Mantener funciones menores a 40 líneas.
 - Toda entidad de dominio debe ser inmutable.
 ```
-Estas reglas se inyectan automáticamente en el prompt del **Scout** y en cada iteración del **Coder**.
 
 ### 2. Mapa del Repositorio (`.devbot/repo_map.json`)
 Si el commit hash del repositorio no ha cambiado desde la última ejecución, DevBot reutiliza el mapa en caché, reduciendo drásticamente el consumo de tokens y el tiempo de análisis.
 
-El mapa almacena:
-- **`Entrypoints`**: Localiza archivos como `Program.cs`, `Startup.cs`, `index.ts`, `main.py`, etc.
-- **`MainLayers`**: Identifica y clasifica capas del sistema:
-  - `Presentation / API` (Controllers, Routes, Endpoints)
-  - `Business Logic / Application` (Services, UseCases, Handlers)
-  - `Domain / Models` (Entities, DTOs, Domain)
-  - `Data Access / Infrastructure` (Data, Repositories, Persistence)
-  - `Shared / Core` (Core, Utils, Common)
-  - `Testing` (Tests, __tests__)
-- **`Components`**: Registro de directorios y tipos clave.
-
 ---
 
-## 6. Estrategias y Detección de Stack Políglota
+## 7. Estrategias y Detección de Stack Políglota
 
-DevBot detecta automáticamente el stack tecnológico del proyecto inspeccionando los archivos raíz mediante `ProjectStackDetector`:
+DevBot detecta automáticamente el stack tecnológico del proyecto mediante `ProjectStackDetector`:
 
 ![Detección de Stack Políglota y Estrategias](docs/diagrams/5_stack_detector.svg)
 
-Cada estrategia proporciona:
-1. **Comando de Compilación / Pruebas:** Ejecutado por el `ReviewerAgent`.
-2. **Comando de Auditoría / Linter:** Ejecutado por el `PreCommitAuditor`.
-3. **Guías Idiomáticas:** Consejos específicos del lenguaje inyectados en el prompt del Coder (p.ej., convenciones de nombrado C# PascalCase vs. camelCase en TypeScript, uso de `async/await`, etc.).
+Cada estrategia (`DotNetStrategy`, `NodeNpmStrategy`, `MavenStrategy`, `PythonStrategy`) proporciona comandos nativos de build, test y linter, junto con guías idiomáticas específicas para el CoderAgent.
 
 ---
 
-## 7. Interacción con Git, Auditoría Pre-Commit y Rollback
-
-DevBot aísla completamente su trabajo en ramas temporales y proporciona un mecanismo de rollback de seguridad:
+## 8. Interacción con Git, Auditoría Pre-Commit y Rollback
 
 ![Flujo Git, Auditoría de Seguridad y Rollback](docs/diagrams/6_git_rollback.svg)
 
-### Mecanismo de Rollback
-Si los subagentes no logran pasar las pruebas o la auditoría de seguridad detecta secretos expuestos:
-1. DevBot ejecuta `git reset --hard HEAD`.
-2. Regresa a la rama original del desarrollador (`git checkout <originalBranch>`).
-3. Elimina la rama temporal de trabajo (`git branch -D <targetBranch>`).
-4. El repositorio local queda exactamente en el mismo estado en que se encontraba antes de iniciar DevBot.
+### Contrato Desacoplado `IGitTools` y Cancelación Cooperativa
+Todas las operaciones de Git y GitHub CLI se abstraen detrás de la interfaz [`IGitTools`](file:///c:/Users/pc/Desktop/Proyectos/BotCLI/src/DevBot.Cli/Tools/IGitTools.cs) implementada por [`GitTools`](file:///c:/Users/pc/Desktop/Proyectos/BotCLI/src/DevBot.Cli/Tools/GitTools.cs):
+- **Cancelación Cooperativa Real:** Los métodos asíncronos (`IsGitRepositoryAsync`, `CheckoutNewBranch`, `Commit`, `Revert`, `PushBranch`, etc.) enlazan el `CancellationToken` del usuario con el timeout interno mediante `CancellationTokenSource.CreateLinkedTokenSource`. Si el usuario presiona `Ctrl+C`, el proceso Git se destruye de inmediato (`process.Kill(true)`) evitando procesos huérfanos.
+- **Aislamiento de Telemetría:** `EnsureGitExclude` añade `.agent/` a `.git/info/exclude` sin alterar el `.gitignore` del repositorio del usuario.
+
+### Mecanismo de Rollback y Checkpoints
+- Cada hito completado y verificado genera un commit de checkpoint en la rama temporal `feature/...`.
+- Si un hito falla tras agotar sus reintentos (`MaxRetries`), DevBot ejecuta un rollback atómico al último checkpoint verde con `ResetHardToCheckpointAsync`.
+- Si no se completó ningún hito, DevBot restaura la rama original y elimina la rama temporal huérfana.
 
 ---
 
-## 8. Auditoría de Seguridad y Detección de Secretos
+## 9. Auditoría de Seguridad y Detección de Secretos
 
-Antes de crear cualquier commit, el componente `SecretScanner.cs` inspecciona línea por línea el contenido de todos los archivos modificados mediante expresiones regulares precompiladas de alto rendimiento:
+Antes de crear cualquier commit, `SecretScanner.cs` inspecciona línea por línea el contenido de todos los archivos modificados:
 
 | Regla | Tipo de Secreto | Patrón / Firma |
 | :--- | :--- | :--- |
@@ -176,7 +179,7 @@ Antes de crear cualquier commit, el componente `SecretScanner.cs` inspecciona l�
 | **`SEC007`** | Contraseñas en Cadenas de Conexión | `(Password\|pwd\|User Id)=[^;]+` |
 
 ### Enmascaramiento Seguro (Redaction)
-Cuando se detecta un hallazgo, el valor del secreto **jamás se imprime en texto claro** ni en los logs ni en la consola:
+Cuando se detecta un hallazgo, el valor del secreto **jamás se imprime en texto claro**:
 ```text
 Valor original:  AIzaSyD-1234567890abcdefghijklmnopqrstuv
 Valor redactado: AIzaSyD-1234****...****klmnopqrstuv
@@ -184,7 +187,7 @@ Valor redactado: AIzaSyD-1234****...****klmnopqrstuv
 
 ---
 
-## 9. Human-in-the-Loop (HITL)
+## 10. Human-in-the-Loop (HITL)
 
 Tras la fase de exploración del Scout Agent, DevBot detiene la ejecución y extrae un resumen ejecutivo del plan:
 - **Archivos a modificar o crear.**
@@ -193,28 +196,34 @@ Tras la fase de exploración del Scout Agent, DevBot detiene la ejecución y ext
 
 El desarrollador tiene 3 opciones interactivas:
 1. **Aprobar:** DevBot procede inmediatamente a la fase Coder.
-2. **Aclarar / Modificar:** El desarrollador ingresa texto con directrices adicionales (por ejemplo: *"No toques la clase AuthController, refactoriza únicamente el TokenService"*). DevBot inyecta esta directriz en el Coder.
+2. **Aclarar / Modificar:** El desarrollador ingresa texto con directrices adicionales. DevBot inyecta esta directriz en el Coder.
 3. **Abortar:** DevBot cancela la ejecución, realiza rollback y limpia la rama de trabajo.
 
-> **Uso en CI/CD:** Para pipelines automatizados o ejecuciones desatendidas, el flag `--yes` / `-y` aprueba automáticamente el plan del Scout.
+Para entornos CI/CD desatendidos, el flag `--yes` / `-y` aprueba automáticamente el plan.
 
 ---
 
-## 10. Guía Rápida de Uso en Línea de Comandos
+## 11. Guía Rápida de Uso en Línea de Comandos
 
 ```bash
 # 1. Ejecutar una tarea con confirmación interactiva humana (Modo Feature por defecto)
-devbot run "Agregar endpoint GET /api/v1/health con métricas de memoria"
+devbot -t "Agregar endpoint GET /api/v1/health con métricas de memoria"
 
 # 2. Ejecutar corrección de un bug en modo interactivo
-devbot run "Corregir NullReferenceException en InvoiceService" --mode bug
+devbot -t "Corregir NullReferenceException en InvoiceService" --mode bug
 
 # 3. Ejecutar refactorización en modo automático (para CI/CD o scripts)
-devbot run "Separar responsabilidades de OrderProcessor a OrderValidator" --mode refactor --yes
+devbot -t "Separar responsabilidades de OrderProcessor a OrderValidator" --mode refactor --yes
 
 # 4. Generar nuevas pruebas unitarias para aumentar cobertura
-devbot run "Agregar pruebas unitarias para PaymentGateway" -M test -y
+devbot -t "Agregar pruebas unitarias para PaymentGateway" -M test -y
 
-# 5. Ver ayuda y opciones disponibles
+# 5. Ver el último informe ejecutivo generado
+devbot --report
+
+# 6. Ver las últimas líneas del log de auditoría
+devbot --logs
+
+# 7. Ver ayuda y opciones disponibles
 devbot --help
 ```

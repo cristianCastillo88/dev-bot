@@ -8,7 +8,7 @@ using Spectre.Console;
 
 namespace DevBot.Cli.Subagents;
 
-public class PlannerAgent : SubagentBase
+public class PlannerAgent : SubagentBase, IPlannerAgent
 {
     public override string Name => "Planner Agent";
 

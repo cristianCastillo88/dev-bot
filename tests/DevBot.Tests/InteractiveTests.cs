@@ -88,6 +88,51 @@ public class InteractiveTests
     }
 
     [Fact]
+    public async Task MockFeedbackHandler_CanSimulatePlanApprovalDecisions()
+    {
+        var planDef = new DevBot.Cli.Core.Planning.PlanDefinition
+        {
+            TaskDescription = "Implement login flow",
+            ArchitecturalSummary = "Auth architecture",
+            Milestones = new List<DevBot.Cli.Core.Planning.PlanMilestone>
+            {
+                new()
+                {
+                    Order = 1,
+                    Id = "m1",
+                    Title = "Create user model",
+                    Scope = "domain",
+                    TargetFiles = new List<string> { "User.cs" },
+                    VerificationCommand = "dotnet test"
+                }
+            }
+        };
+
+        var planSummary = new PlanApprovalSummary(
+            "Implement login flow",
+            AgentMode.Feature,
+            new ProjectStackInfo(ProjectStackType.DotNet, "C#", "dotnet", "App.sln", Array.Empty<string>(), Array.Empty<string>()),
+            "C# / .NET Strategy",
+            planDef,
+            new[] { "User.cs" },
+            "Auth architecture"
+        );
+
+        var approvedHandler = new MockFeedbackHandler(HumanDecisionType.Approved);
+        var decision1 = await approvedHandler.RequestPlanApprovalAsync(planSummary);
+        Assert.Equal(HumanDecisionType.Approved, decision1.Type);
+
+        var clarifiedHandler = new MockFeedbackHandler(HumanDecisionType.Clarified, "Use BCrypt for password hashing");
+        var decision2 = await clarifiedHandler.RequestPlanApprovalAsync(planSummary);
+        Assert.Equal(HumanDecisionType.Clarified, decision2.Type);
+        Assert.Equal("Use BCrypt for password hashing", decision2.AdditionalGuidance);
+
+        var abortedHandler = new MockFeedbackHandler(HumanDecisionType.Aborted);
+        var decision3 = await abortedHandler.RequestPlanApprovalAsync(planSummary);
+        Assert.Equal(HumanDecisionType.Aborted, decision3.Type);
+    }
+
+    [Fact]
     public void AgentContext_AutoApprove_SetsProperly()
     {
         var context = new AgentContext(Path.GetTempPath(), "dummy-key");
@@ -109,6 +154,11 @@ public class InteractiveTests
         {
             _type = type;
             _guidance = guidance;
+        }
+
+        public Task<HumanDecision> RequestPlanApprovalAsync(PlanApprovalSummary plan, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new HumanDecision(_type, _guidance));
         }
 
         public Task<HumanDecision> RequestScoutApprovalAsync(ScoutPlanSummary plan, CancellationToken cancellationToken = default)

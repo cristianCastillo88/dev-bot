@@ -36,7 +36,7 @@ public abstract class SubagentBase : ISubagent
         ChatHistory history,
         AgentContext context,
         CancellationToken cancellationToken,
-        string statusText = "Pensando y analizando con Gemini 3.5 Flash Lite...")
+        string statusText = "Pensando y analizando...")
     {
         var chatService = kernel.GetRequiredService<IChatCompletionService>();
 
@@ -54,7 +54,7 @@ public abstract class SubagentBase : ISubagent
                 const int maxRetries = 3;
                 const int maxRateLimitRetries = 5;
                 int rateLimitAttempt = 0;
-                int[] delaysSeconds = { 2, 4, 8 };
+                int[] delaysSeconds = [2, 4, 8];
 
                 for (int attempt = 0; ; attempt++)
                 {
@@ -136,36 +136,23 @@ public abstract class SubagentBase : ISubagent
         return defaultSeconds;
     }
 
-    private static bool IsTransientHttpError(HttpOperationException ex)
+    private static bool IsTransientHttpError(HttpOperationException ex) =>
+        IsTransientHttpCode((int?)ex.StatusCode, ex.Message);
+
+    private static bool IsTransientHttpError(HttpRequestException ex) =>
+        IsTransientHttpCode((int?)ex.StatusCode, ex.Message);
+
+    private static bool IsTransientHttpCode(int? statusCode, string message)
     {
-        if (ex.StatusCode.HasValue)
+        if (statusCode.HasValue && statusCode.Value is 503 or 429 or 500 or 502 or 504)
         {
-            int code = (int)ex.StatusCode.Value;
-            if (code == 503 || code == 429 || code == 500 || code == 502 || code == 504)
-                return true;
+            return true;
         }
 
-        string msg = ex.Message;
-        return msg.Contains("503", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("429", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("Service Unavailable", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsTransientHttpError(HttpRequestException ex)
-    {
-        if (ex.StatusCode.HasValue)
-        {
-            int code = (int)ex.StatusCode.Value;
-            if (code == 503 || code == 429 || code == 500 || code == 502 || code == 504)
-                return true;
-        }
-
-        string msg = ex.Message;
-        return msg.Contains("503", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("429", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("Service Unavailable", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase);
+        return message.Contains("503", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("429", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Service Unavailable", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void TrackTokenUsage(ChatMessageContent response, AgentContext context)

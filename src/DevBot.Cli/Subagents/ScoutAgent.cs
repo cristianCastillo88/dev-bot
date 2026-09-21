@@ -7,7 +7,7 @@ using Spectre.Console;
 
 namespace DevBot.Cli.Subagents;
 
-public class ScoutAgent : SubagentBase
+public class ScoutAgent : SubagentBase, IScoutAgent
 {
     public override string Name => "ScoutAgent (Analista / Solo Lectura)";
 

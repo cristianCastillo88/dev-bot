@@ -6,16 +6,27 @@ using Microsoft.SemanticKernel;
 
 namespace DevBot.Cli.Tools;
 
-public class GitTools
+/// <summary>
+/// Implementación de herramientas para interactuar con repositorios Git y utilidades de GitHub CLI.
+/// </summary>
+public class GitTools : IGitTools
 {
     private readonly string _repoRoot;
 
+    /// <summary>
+    /// Inicializa una nueva instancia de <see cref="GitTools"/>.
+    /// </summary>
+    /// <param name="repoRoot">Directorio raíz del repositorio.</param>
     public GitTools(string repoRoot)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repoRoot);
         _repoRoot = Path.GetFullPath(repoRoot);
     }
 
-    private async Task<(int ExitCode, string Output, string Error)> RunGitAsync(string arguments, int timeoutSeconds = 30)
+    private async Task<(int ExitCode, string Output, string Error)> RunGitAsync(
+        string arguments,
+        int timeoutSeconds = 30,
+        CancellationToken cancellationToken = default)
     {
         var psi = new ProcessStartInfo
         {
@@ -41,52 +52,65 @@ public class GitTools
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         try
         {
-            await process.WaitForExitAsync(cts.Token);
+            await process.WaitForExitAsync(linkedCts.Token);
             return (process.ExitCode, stdout.ToString().Trim(), stderr.ToString().Trim());
         }
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch { }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             return (-1, stdout.ToString(), "Git command timed out.");
         }
     }
 
-    public async Task<bool> IsGitRepositoryAsync()
+    /// <inheritdoc />
+    public async Task<bool> IsGitRepositoryAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync("rev-parse --is-inside-work-tree");
+        var result = await RunGitAsync("rev-parse --is-inside-work-tree", cancellationToken: cancellationToken);
         return result.ExitCode == 0 && result.Output.Equals("true", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<string> GetCurrentBranchAsync()
+    /// <inheritdoc />
+    public async Task<string> GetCurrentBranchAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync("rev-parse --abbrev-ref HEAD");
+        var result = await RunGitAsync("rev-parse --abbrev-ref HEAD", cancellationToken: cancellationToken);
         return result.ExitCode == 0 ? result.Output : "main";
     }
 
+    /// <summary>
+    /// Genera un slug simplificado en minúsculas y separado por guiones apto para nombres de ramas Git.
+    /// </summary>
+    /// <param name="text">Texto origen del requerimiento o título.</param>
+    /// <returns>Identificador normalizado.</returns>
     public static string CreateSlug(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return "devbot-task";
         string slug = text.ToLowerInvariant();
         slug = Regex.Replace(slug, @"[^a-z0-9\s-]", "");
         slug = Regex.Replace(slug, @"\s+", "-").Trim('-');
-        if (slug.Length > 40) slug = slug.Substring(0, 40).TrimEnd('-');
+        if (slug.Length > 40) slug = slug[..40].TrimEnd('-');
         return string.IsNullOrWhiteSpace(slug) ? "devbot-task" : slug;
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Creates and switches to a new feature branch in git.")]
-    public async Task<string> CheckoutNewBranch(string branchName)
+    public async Task<string> CheckoutNewBranch(string branchName, CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync($"checkout -b {branchName}");
+        var result = await RunGitAsync($"checkout -b {branchName}", cancellationToken: cancellationToken);
         if (result.ExitCode == 0)
         {
             return $"SUCCESS: Checked out new branch '{branchName}'.";
         }
 
         // If branch already exists, try checking it out
-        var switchResult = await RunGitAsync($"checkout {branchName}");
+        var switchResult = await RunGitAsync($"checkout {branchName}", cancellationToken: cancellationToken);
         if (switchResult.ExitCode == 0)
         {
             return $"SUCCESS: Switched to existing branch '{branchName}'.";
@@ -95,28 +119,31 @@ public class GitTools
         return $"ERROR checking out branch '{branchName}': {result.Error}";
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Checks out an existing git branch.")]
-    public async Task<string> CheckoutBranch(string branchName)
+    public async Task<string> CheckoutBranch(string branchName, CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync($"checkout {branchName}");
+        var result = await RunGitAsync($"checkout {branchName}", cancellationToken: cancellationToken);
         return result.ExitCode == 0
             ? $"SUCCESS: Switched to branch '{branchName}'."
             : $"ERROR checking out branch '{branchName}': {result.Error}";
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Deletes a git branch.")]
-    public async Task<string> DeleteBranch(string branchName)
+    public async Task<string> DeleteBranch(string branchName, CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync($"branch -D {branchName}");
+        var result = await RunGitAsync($"branch -D {branchName}", cancellationToken: cancellationToken);
         return result.ExitCode == 0
             ? $"SUCCESS: Deleted branch '{branchName}'."
             : $"ERROR deleting branch '{branchName}': {result.Error}";
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Stages specified modified files and commits them with the given commit message.")]
-    public async Task<string> CommitFiles(IEnumerable<string> files, string message)
+    public async Task<string> CommitFiles(IEnumerable<string> files, string message, CancellationToken cancellationToken = default)
     {
-        var fileList = files?.ToList() ?? new List<string>();
+        var fileList = files?.ToList() ?? [];
         if (fileList.Count == 0)
         {
             return "ANOMALY: No modified files registered to commit. Aborting commit to prevent untracked changes.";
@@ -125,7 +152,7 @@ public class GitTools
         foreach (var file in fileList)
         {
             string safeFile = file.Replace('\\', '/').Replace("\"", "\\\"");
-            var addResult = await RunGitAsync($"add \"{safeFile}\"");
+            var addResult = await RunGitAsync($"add \"{safeFile}\"", cancellationToken: cancellationToken);
             if (addResult.ExitCode != 0)
             {
                 return $"ERROR staging file '{file}': {addResult.Error}";
@@ -133,7 +160,7 @@ public class GitTools
         }
 
         // Check if there are staged changes
-        var statusResult = await RunGitAsync("diff --staged --name-only");
+        var statusResult = await RunGitAsync("diff --staged --name-only", cancellationToken: cancellationToken);
         if (string.IsNullOrWhiteSpace(statusResult.Output))
         {
             return "WARNING: No staged changes found to commit.";
@@ -143,12 +170,12 @@ public class GitTools
         string tempMsgFile = Path.Combine(Path.GetTempPath(), $"devbot_commit_{Guid.NewGuid():N}.txt");
         try
         {
-            await File.WriteAllTextAsync(tempMsgFile, message, Encoding.UTF8);
+            await File.WriteAllTextAsync(tempMsgFile, message, Encoding.UTF8, cancellationToken);
             string safeMsgPath = tempMsgFile.Replace('\\', '/');
-            var commitResult = await RunGitAsync($"commit -F \"{safeMsgPath}\"");
+            var commitResult = await RunGitAsync($"commit -F \"{safeMsgPath}\"", cancellationToken: cancellationToken);
             if (commitResult.ExitCode == 0)
             {
-                var hashResult = await RunGitAsync("rev-parse --short HEAD");
+                var hashResult = await RunGitAsync("rev-parse --short HEAD", cancellationToken: cancellationToken);
                 return $"SUCCESS: Committed {fileList.Count} files. Hash: {hashResult.Output}";
             }
 
@@ -160,11 +187,11 @@ public class GitTools
         }
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Commits staged changes with the given commit message.")]
-    public async Task<string> Commit(string message)
+    public async Task<string> Commit(string message, CancellationToken cancellationToken = default)
     {
-        // Check if there are staged changes
-        var statusResult = await RunGitAsync("diff --staged --name-only");
+        var statusResult = await RunGitAsync("diff --staged --name-only", cancellationToken: cancellationToken);
         if (string.IsNullOrWhiteSpace(statusResult.Output))
         {
             return "WARNING: No staged changes to commit.";
@@ -173,12 +200,12 @@ public class GitTools
         string tempMsgFile = Path.Combine(Path.GetTempPath(), $"devbot_commit_{Guid.NewGuid():N}.txt");
         try
         {
-            await File.WriteAllTextAsync(tempMsgFile, message, Encoding.UTF8);
+            await File.WriteAllTextAsync(tempMsgFile, message, Encoding.UTF8, cancellationToken);
             string safeMsgPath = tempMsgFile.Replace('\\', '/');
-            var commitResult = await RunGitAsync($"commit -F \"{safeMsgPath}\"");
+            var commitResult = await RunGitAsync($"commit -F \"{safeMsgPath}\"", cancellationToken: cancellationToken);
             if (commitResult.ExitCode == 0)
             {
-                var hashResult = await RunGitAsync("rev-parse --short HEAD");
+                var hashResult = await RunGitAsync("rev-parse --short HEAD", cancellationToken: cancellationToken);
                 return $"SUCCESS: Committed changes. Hash: {hashResult.Output}";
             }
 
@@ -190,45 +217,50 @@ public class GitTools
         }
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Reverts uncommitted changes in the repository.")]
-    public async Task<string> Revert()
+    public async Task<string> Revert(CancellationToken cancellationToken = default)
     {
-        await RunGitAsync("reset --hard HEAD");
-        await RunGitAsync("clean -fd");
+        await RunGitAsync("reset --hard HEAD", cancellationToken: cancellationToken);
+        await RunGitAsync("clean -fd", cancellationToken: cancellationToken);
         return "SUCCESS: Reverted working directory to clean state.";
     }
 
-    public async Task<string> ResetHardToCheckpointAsync(string commitHash)
+    /// <inheritdoc />
+    public async Task<string> ResetHardToCheckpointAsync(string commitHash, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(commitHash) || commitHash.Equals("unknown", StringComparison.OrdinalIgnoreCase))
         {
-            return await Revert();
+            return await Revert(cancellationToken);
         }
 
-        var result = await RunGitAsync($"reset --hard {commitHash}");
-        await RunGitAsync("clean -fd");
+        var result = await RunGitAsync($"reset --hard {commitHash}", cancellationToken: cancellationToken);
+        await RunGitAsync("clean -fd", cancellationToken: cancellationToken);
         return result.ExitCode == 0
             ? $"SUCCESS: Reset repository state to checkpoint '{commitHash}'."
             : $"ERROR resetting to checkpoint '{commitHash}': {result.Error}";
     }
 
-    public async Task<string> GetDiffSummaryAsync()
+    /// <inheritdoc />
+    public async Task<string> GetDiffSummaryAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync("diff --stat HEAD~1");
+        var result = await RunGitAsync("diff --stat HEAD~1", cancellationToken: cancellationToken);
         if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.Output))
         {
-            var currentDiff = await RunGitAsync("diff --stat");
+            var currentDiff = await RunGitAsync("diff --stat", cancellationToken: cancellationToken);
             return currentDiff.Output;
         }
         return result.Output;
     }
 
-    public async Task<string> GetLastCommitHashAsync()
+    /// <inheritdoc />
+    public async Task<string> GetLastCommitHashAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync("rev-parse --short HEAD");
+        var result = await RunGitAsync("rev-parse --short HEAD", cancellationToken: cancellationToken);
         return result.ExitCode == 0 ? result.Output : "unknown";
     }
 
+    /// <inheritdoc />
     public void EnsureGitExclude(string pattern = ".agent/")
     {
         try
@@ -268,24 +300,27 @@ public class GitTools
         }
     }
 
+    /// <inheritdoc />
     [KernelFunction, Description("Pushes the specified branch to the origin remote.")]
-    public async Task<(bool Success, string Output, string Error)> PushBranch(string branchName)
+    public async Task<(bool Success, string Output, string Error)> PushBranch(string branchName, CancellationToken cancellationToken = default)
     {
-        var result = await RunGitAsync($"push -u origin {branchName}");
+        var result = await RunGitAsync($"push -u origin {branchName}", cancellationToken: cancellationToken);
         return (result.ExitCode == 0, result.Output, result.Error);
     }
 
+    /// <inheritdoc />
     public async Task<(bool Success, string PrUrl, string Message)> CreatePullRequestAsync(
         string branchName,
         string baseBranch,
         string title,
-        string body)
+        string body,
+        CancellationToken cancellationToken = default)
     {
         // 1. Try creating Pull Request via GitHub CLI (`gh`)
         // NOTE: Strictly without --auto or merge flags, waiting exclusively for manual human review!
         string safeTitle = title.Replace("\"", "\\\"");
         string safeBody = body.Replace("\"", "\\\"");
-        var ghResult = await RunProcessAsync("gh", $"pr create --title \"{safeTitle}\" --body \"{safeBody}\" --base {baseBranch} --head {branchName}");
+        var ghResult = await RunProcessAsync("gh", $"pr create --title \"{safeTitle}\" --body \"{safeBody}\" --base {baseBranch} --head {branchName}", cancellationToken: cancellationToken);
 
         if (ghResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(ghResult.Output))
         {
@@ -298,7 +333,7 @@ public class GitTools
         }
 
         // 2. Fallback: Generate standard GitHub Web URL for manual Pull Request creation
-        string fallbackUrl = await GetGitHubCompareUrlAsync(branchName, baseBranch);
+        string fallbackUrl = await GetGitHubCompareUrlAsync(branchName, baseBranch, cancellationToken);
         if (!string.IsNullOrEmpty(fallbackUrl))
         {
             return (true, fallbackUrl, "GitHub CLI no disponible o no autenticado. Se generó URL web para apertura manual del Pull Request.");
@@ -308,9 +343,10 @@ public class GitTools
         return (false, string.Empty, $"No se pudo crear el PR automáticamente ni generar URL: {errDetails}");
     }
 
-    public async Task<string> GetGitHubCompareUrlAsync(string branchName, string baseBranch)
+    /// <inheritdoc />
+    public async Task<string> GetGitHubCompareUrlAsync(string branchName, string baseBranch, CancellationToken cancellationToken = default)
     {
-        var remoteResult = await RunGitAsync("remote get-url origin");
+        var remoteResult = await RunGitAsync("remote get-url origin", cancellationToken: cancellationToken);
         if (remoteResult.ExitCode != 0 || string.IsNullOrWhiteSpace(remoteResult.Output))
         {
             return string.Empty;
@@ -328,7 +364,11 @@ public class GitTools
         return string.Empty;
     }
 
-    private async Task<(int ExitCode, string Output, string Error)> RunProcessAsync(string fileName, string arguments, int timeoutSeconds = 30)
+    private async Task<(int ExitCode, string Output, string Error)> RunProcessAsync(
+        string fileName,
+        string arguments,
+        int timeoutSeconds = 30,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -356,9 +396,18 @@ public class GitTools
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-            await process.WaitForExitAsync(cts.Token);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+            await process.WaitForExitAsync(linkedCts.Token);
             return (process.ExitCode, stdout.ToString().Trim(), stderr.ToString().Trim());
+        }
+        catch (OperationCanceledException)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            return (-1, string.Empty, "Process timed out.");
         }
         catch (Exception ex)
         {

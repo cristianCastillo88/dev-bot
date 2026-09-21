@@ -7,7 +7,7 @@ using Spectre.Console;
 
 namespace DevBot.Cli.Subagents;
 
-public class ReviewerAgent : SubagentBase
+public class ReviewerAgent : SubagentBase, IReviewerAgent
 {
     public const string AllPassToken = "ALL_PASS";
     public override string Name => "ReviewerAgent (QA / Verificador Determinista)";

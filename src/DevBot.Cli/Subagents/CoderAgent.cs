@@ -7,7 +7,7 @@ using Spectre.Console;
 
 namespace DevBot.Cli.Subagents;
 
-public class CoderAgent : SubagentBase
+public class CoderAgent : SubagentBase, ICoderAgent
 {
     public override string Name => "CoderAgent (Implementador Quirúrgico)";
 
