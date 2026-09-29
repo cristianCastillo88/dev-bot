@@ -7,6 +7,28 @@ public class MavenStrategy : IBuildAndTestStrategy
     public ProjectStackType SupportedStack => ProjectStackType.JavaMaven;
     public string Name => "Java / Maven Strategy";
 
+    public Task<SyntaxValidationResult> ValidateSyntaxAsync(
+        string filePath,
+        string content,
+        TerminalTools terminal,
+        CancellationToken ct = default)
+    {
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext == ".json")
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return Task.FromResult(SyntaxValidationResult.Failure($"JSON syntax error: {ex.Message}"));
+            }
+        }
+
+        return Task.FromResult(SyntaxValidationResult.Success());
+    }
+
     public async Task<StrategyExecutionResult> BuildAsync(TerminalTools terminal, CancellationToken ct = default)
     {
         string raw = await terminal.RunCommand("mvn", "compile -B");

@@ -7,6 +7,59 @@ public class PythonStrategy : IBuildAndTestStrategy
     public ProjectStackType SupportedStack => ProjectStackType.Python;
     public string Name => "Python Strategy";
 
+    public async Task<SyntaxValidationResult> ValidateSyntaxAsync(
+        string filePath,
+        string content,
+        TerminalTools terminal,
+        CancellationToken ct = default)
+    {
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext == ".py")
+        {
+            string tempFile = Path.Combine(Path.GetTempPath(), $"devbot_syntax_{Guid.NewGuid():N}.py");
+            try
+            {
+                await File.WriteAllTextAsync(tempFile, content, System.Text.Encoding.UTF8, ct);
+                string raw = await terminal.RunCommand("python", $"-m py_compile \"{tempFile}\"");
+                if (raw.Contains("SyntaxError", StringComparison.OrdinalIgnoreCase) ||
+                    raw.Contains("IndentationError", StringComparison.OrdinalIgnoreCase) ||
+                    raw.Contains("TabError", StringComparison.OrdinalIgnoreCase))
+                {
+                    var lines = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Where(l => !l.StartsWith("Exit Code:") && !l.StartsWith("---"))
+                        .Select(l => l.Trim())
+                        .ToList();
+                    string errorSummary = string.Join("; ", lines.TakeLast(3));
+                    return SyntaxValidationResult.Failure($"Python syntax error: {errorSummary}");
+                }
+            }
+            catch
+            {
+                // Silently fallback if python CLI is unavailable in the environment
+            }
+            finally
+            {
+                if (File.Exists(tempFile))
+                {
+                    try { File.Delete(tempFile); } catch { }
+                }
+            }
+        }
+        else if (ext == ".json")
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return SyntaxValidationResult.Failure($"JSON syntax error: {ex.Message}");
+            }
+        }
+
+        return SyntaxValidationResult.Success();
+    }
+
     public Task<StrategyExecutionResult> BuildAsync(TerminalTools terminal, CancellationToken ct = default)
     {
         // Python is an interpreted language; build is a no-op success

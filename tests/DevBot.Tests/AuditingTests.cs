@@ -170,6 +170,7 @@ public class MockFailingLinterStrategy : IBuildAndTestStrategy
     public Task<StrategyExecutionResult> BuildAsync(TerminalTools terminal, CancellationToken ct = default) => Task.FromResult(new StrategyExecutionResult(true, 0, "", "", ""));
     public Task<StrategyExecutionResult> TestAsync(TerminalTools terminal, CancellationToken ct = default) => Task.FromResult(new StrategyExecutionResult(true, 0, "", "", ""));
     public Task<StrategyExecutionResult> LintOrFormatAsync(TerminalTools terminal, CancellationToken ct = default) => Task.FromResult(new StrategyExecutionResult(false, 1, "", _error, "dotnet format"));
+    public Task<SyntaxValidationResult> ValidateSyntaxAsync(string filePath, string content, TerminalTools terminal, CancellationToken ct = default) => Task.FromResult(SyntaxValidationResult.Success());
     public string GetIdiomaticPromptGuidelines() => "";
     public string GetVerificationInstructions() => "";
 }

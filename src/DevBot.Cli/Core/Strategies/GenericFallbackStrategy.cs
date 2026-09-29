@@ -7,6 +7,28 @@ public class GenericFallbackStrategy : IBuildAndTestStrategy
     public ProjectStackType SupportedStack => ProjectStackType.Unknown;
     public string Name => "Generic / Unknown Strategy";
 
+    public Task<SyntaxValidationResult> ValidateSyntaxAsync(
+        string filePath,
+        string content,
+        TerminalTools terminal,
+        CancellationToken ct = default)
+    {
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext == ".json")
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return Task.FromResult(SyntaxValidationResult.Failure($"JSON syntax error: {ex.Message}"));
+            }
+        }
+
+        return Task.FromResult(SyntaxValidationResult.Success());
+    }
+
     public Task<StrategyExecutionResult> BuildAsync(TerminalTools terminal, CancellationToken ct = default)
     {
         return Task.FromResult(new StrategyExecutionResult(true, 0, "No default build tool detected.", string.Empty, "none"));

@@ -1,4 +1,6 @@
 using DevBot.Cli.Core;
+using DevBot.Cli.Core.Planning;
+using DevBot.Cli.Core.Strategies;
 using DevBot.Cli.Tools;
 using Xunit;
 
@@ -260,5 +262,146 @@ public class ToolsTests : IDisposable
         Assert.Equal(0, context.LastCommandExitCode);
         Assert.Single(context.CommandExecutionHistory);
         Assert.True(context.CommandExecutionHistory[0].Success);
+    }
+
+    [Fact]
+    public void FileTools_ApplyDiff_RejectsSyntaxErrors()
+    {
+        var tools = new FileTools(_testDir);
+        string validCode = "public class Calculator { public int Add(int a, int b) => a + b; }";
+        tools.WriteFile("Calculator.cs", validCode);
+
+        // Intentionally introduce broken C# syntax: unclosed expression
+        string diffResult = tools.ApplyDiff(
+            "Calculator.cs",
+            originalSnippet: "public int Add(int a, int b) => a + b;",
+            replacementSnippet: "public int Add(int a, int b) => a + ; // broken syntax"
+        );
+
+        Assert.Contains("PRE-FLIGHT SYNTAX ERROR", diffResult);
+        string currentContent = File.ReadAllText(Path.Combine(_testDir, "Calculator.cs"));
+        Assert.Equal(validCode, currentContent); // File must be untouched
+    }
+
+    [Fact]
+    public void FileTools_ApplyMultiDiff_AppliesMultipleEditsAtomically()
+    {
+        var tools = new FileTools(_testDir);
+        string original = """
+            using System;
+
+            public class Example
+            {
+                public int A = 1;
+                public int B = 2;
+            }
+            """;
+        tools.WriteFile("Example.cs", original);
+
+        string diffsJson = """
+            [
+                {
+                    "originalSnippet": "using System;",
+                    "replacementSnippet": "using System;\nusing System.Collections.Generic;"
+                },
+                {
+                    "originalSnippet": "public int B = 2;",
+                    "replacementSnippet": "public int B = 200;"
+                }
+            ]
+            """;
+
+        string result = tools.ApplyMultiDiff("Example.cs", diffsJson);
+        Assert.Contains("SUCCESS", result);
+
+        string updated = File.ReadAllText(Path.Combine(_testDir, "Example.cs"));
+        Assert.Contains("using System.Collections.Generic;", updated);
+        Assert.Contains("public int B = 200;", updated);
+    }
+
+    [Fact]
+    public void FileTools_ApplyMultiDiff_AbortsTransactionIfAnyChunkFails()
+    {
+        var tools = new FileTools(_testDir);
+        string original = "public class Test { public int X = 10; }";
+        tools.WriteFile("Test.cs", original);
+
+        string diffsJson = """
+            [
+                {
+                    "originalSnippet": "public int X = 10;",
+                    "replacementSnippet": "public int X = 20;"
+                },
+                {
+                    "originalSnippet": "this snippet does not exist in the file",
+                    "replacementSnippet": "replacement"
+                }
+            ]
+            """;
+
+        string result = tools.ApplyMultiDiff("Test.cs", diffsJson);
+        Assert.Contains("TRANSACTION ABORTED", result);
+
+        string fileContent = File.ReadAllText(Path.Combine(_testDir, "Test.cs"));
+        Assert.Equal(original, fileContent); // Ensure first chunk was rolled back
+    }
+
+    [Fact]
+    public void FileTools_ScopeGuardrails_BlocksModificationOutsideCurrentMilestone()
+    {
+        var context = new AgentContext(_testDir, "test-api-key");
+        context.CurrentMilestone = new PlanMilestone
+        {
+            Order = 1,
+            Title = "Implement Feature A",
+            Scope = "Core",
+            TargetFiles = ["src/AllowedFile.cs"]
+        };
+
+        var tools = new FileTools(_testDir, context);
+        tools.WriteFile("src/AllowedFile.cs", "public class AllowedFile {}");
+        tools.WriteFile("src/ForbiddenFile.cs", "public class ForbiddenFile {}");
+
+        // Editing forbidden file should be blocked
+        string blockedResult = tools.ApplyDiff(
+            "src/ForbiddenFile.cs",
+            "public class ForbiddenFile {}",
+            "public class ForbiddenFile { public int X = 1; }"
+        );
+
+        Assert.Contains("SCOPE ERROR", blockedResult);
+        Assert.Contains("Milestone #1", blockedResult);
+
+        // Editing allowed file should succeed
+        string allowedResult = tools.ApplyDiff(
+            "src/AllowedFile.cs",
+            "public class AllowedFile {}",
+            "public class AllowedFile { public int X = 1; }"
+        );
+
+        Assert.Contains("SUCCESS", allowedResult);
+        Assert.Contains("src/AllowedFile.cs", context.MilestoneModifiedFiles);
+    }
+
+    [Fact]
+    public void FileTools_CoderPlugin_ContainsApplyMultiDiff()
+    {
+        var coderPlugin = FileTools.CreateCoderPlugin(_testDir);
+        var functionNames = coderPlugin.Select(f => f.Name).ToList();
+
+        Assert.Contains("ApplyMultiDiff", functionNames);
+    }
+
+    [Fact]
+    public void FileTools_PolyglotValidation_DelegatesToActivePythonStrategy()
+    {
+        var context = new AgentContext(_testDir, "test-api-key")
+        {
+            Strategy = new PythonStrategy()
+        };
+
+        var tools = new FileTools(_testDir, context);
+        string writeResult = tools.WriteFile("script.py", "def add(a, b):\n    return a + b\n");
+        Assert.Contains("SUCCESS", writeResult);
     }
 }

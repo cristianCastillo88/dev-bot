@@ -7,6 +7,57 @@ public class NodeNpmStrategy : IBuildAndTestStrategy
     public ProjectStackType SupportedStack => ProjectStackType.NodeJs;
     public string Name => "Node.js / TypeScript / JavaScript Strategy";
 
+    public async Task<SyntaxValidationResult> ValidateSyntaxAsync(
+        string filePath,
+        string content,
+        TerminalTools terminal,
+        CancellationToken ct = default)
+    {
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext is ".js" or ".mjs" or ".cjs")
+        {
+            string tempFile = Path.Combine(Path.GetTempPath(), $"devbot_syntax_{Guid.NewGuid():N}{ext}");
+            try
+            {
+                await File.WriteAllTextAsync(tempFile, content, System.Text.Encoding.UTF8, ct);
+                string raw = await terminal.RunCommand("node", $"--check \"{tempFile}\"");
+                if (raw.Contains("SyntaxError", StringComparison.OrdinalIgnoreCase))
+                {
+                    var lines = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Where(l => !l.StartsWith("Exit Code:") && !l.StartsWith("---"))
+                        .Select(l => l.Trim())
+                        .ToList();
+                    string errorSummary = string.Join("; ", lines.TakeLast(3));
+                    return SyntaxValidationResult.Failure($"JavaScript syntax error: {errorSummary}");
+                }
+            }
+            catch
+            {
+                // Silently fallback if node CLI is unavailable
+            }
+            finally
+            {
+                if (File.Exists(tempFile))
+                {
+                    try { File.Delete(tempFile); } catch { }
+                }
+            }
+        }
+        else if (ext == ".json")
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return SyntaxValidationResult.Failure($"JSON syntax error: {ex.Message}");
+            }
+        }
+
+        return SyntaxValidationResult.Success();
+    }
+
     public async Task<StrategyExecutionResult> BuildAsync(TerminalTools terminal, CancellationToken ct = default)
     {
         string raw = await terminal.RunCommand("npm", "run build");

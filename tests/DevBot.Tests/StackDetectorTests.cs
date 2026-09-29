@@ -1,4 +1,5 @@
 using DevBot.Cli.Core.Strategies;
+using DevBot.Cli.Tools;
 using Xunit;
 
 namespace DevBot.Tests;
@@ -177,5 +178,39 @@ public class StackDetectorTests : IDisposable
         var py = new PythonStrategy();
         Assert.Contains("PEP 8", py.GetIdiomaticPromptGuidelines());
         Assert.Contains("pytest", py.GetVerificationInstructions());
+    }
+
+    [Fact]
+    public async Task DotNetStrategy_ValidateSyntax_DetectsErrors()
+    {
+        var dotNet = new DotNetStrategy();
+        var terminal = new TerminalTools(_testDir);
+
+        var valid = await dotNet.ValidateSyntaxAsync("Calc.cs", "public class Calc { public int Add(int a, int b) => a + b; }", terminal);
+        Assert.True(valid.IsValid);
+
+        var invalid = await dotNet.ValidateSyntaxAsync("Calc.cs", "public class Calc { public int Add(int a, int b) => a + ; }", terminal);
+        Assert.False(invalid.IsValid);
+        Assert.Contains("syntax error", invalid.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+
+        var invalidJson = await dotNet.ValidateSyntaxAsync("app.json", "{ broken json ", terminal);
+        Assert.False(invalidJson.IsValid);
+        Assert.Contains("JSON syntax error", invalidJson.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task GenericFallbackStrategy_AlwaysPassesSafely()
+    {
+        var fallback = new GenericFallbackStrategy();
+        var terminal = new TerminalTools(_testDir);
+
+        var valid = await fallback.ValidateSyntaxAsync("script.sh", "echo 'hello'", terminal);
+        Assert.True(valid.IsValid);
+
+        var validJson = await fallback.ValidateSyntaxAsync("config.json", "{\"key\":\"value\"}", terminal);
+        Assert.True(validJson.IsValid);
+
+        var invalidJson = await fallback.ValidateSyntaxAsync("config.json", "{ broken ", terminal);
+        Assert.False(invalidJson.IsValid);
     }
 }

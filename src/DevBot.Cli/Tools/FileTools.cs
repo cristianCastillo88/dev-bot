@@ -1,11 +1,23 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using DevBot.Cli.Core;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.SemanticKernel;
 using Spectre.Console;
 
 namespace DevBot.Cli.Tools;
+
+public class DiffChunk
+{
+    [Description("The exact original snippet of code to replace (must match exactly one location)")]
+    public string OriginalSnippet { get; set; } = string.Empty;
+
+    [Description("The new replacement code snippet")]
+    public string ReplacementSnippet { get; set; } = string.Empty;
+}
 
 public class FileTools
 {
@@ -256,6 +268,129 @@ public class FileTools
         }
     }
 
+    private (bool Allowed, string? ErrorMessage) ValidateMilestoneScope(string filePath)
+    {
+        if (_context?.CurrentMilestone == null ||
+            _context.CurrentMilestone.TargetFiles == null ||
+            _context.CurrentMilestone.TargetFiles.Count == 0)
+        {
+            return (true, null);
+        }
+
+        string fullPath = ResolveSafePath(filePath);
+        string relPath = GetRelativePath(fullPath).Replace('\\', '/');
+
+        bool isMatch = _context.CurrentMilestone.TargetFiles.Any(tf =>
+        {
+            string normTf = tf.Trim().Replace('\\', '/');
+            if (normTf.StartsWith("./")) normTf = normTf[2..];
+            return normTf.Equals(relPath, StringComparison.OrdinalIgnoreCase) ||
+                   relPath.EndsWith("/" + normTf, StringComparison.OrdinalIgnoreCase) ||
+                   (normTf.EndsWith("/*") && relPath.StartsWith(normTf[..^2], StringComparison.OrdinalIgnoreCase));
+        });
+
+        if (!isMatch)
+        {
+            string targets = string.Join(", ", _context.CurrentMilestone.TargetFiles);
+            return (false, $"SCOPE ERROR: Modifying '{relPath}' is blocked because it is not within the TargetFiles declared for Milestone #{_context.CurrentMilestone.Order} ('{_context.CurrentMilestone.Title}'). Allowed target files: [{targets}]. Confine your edits strictly to these files.");
+        }
+
+        return (true, null);
+    }
+
+    private (bool IsValid, string? ErrorMessage) ValidatePreFlightSyntax(string filePath, string content)
+    {
+        // 1. Delegar en la estrategia activa si existe un contexto configurado
+        if (_context?.Strategy != null)
+        {
+            var terminal = new TerminalTools(_repoRoot, _context);
+            var result = _context.Strategy.ValidateSyntaxAsync(filePath, content, terminal, CancellationToken.None).GetAwaiter().GetResult();
+            return (result.IsValid, result.ErrorMessage);
+        }
+
+        // 2. Fallback de conveniencia para C# y JSON cuando FileTools se instancia sin contexto (ej. pruebas unitarias aisladas)
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext == ".cs")
+        {
+            bool hasDeclarations = content.Contains("class ") ||
+                                   content.Contains("record ") ||
+                                   content.Contains("interface ") ||
+                                   content.Contains("struct ") ||
+                                   content.Contains("namespace ") ||
+                                   content.Contains("enum ");
+
+            if (!hasDeclarations)
+            {
+                return (true, null);
+            }
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(content);
+            var diagnostics = syntaxTree.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Take(3)
+                .ToList();
+
+            if (diagnostics.Count > 0)
+            {
+                var errors = string.Join("; ", diagnostics.Select(d =>
+                {
+                    var lineSpan = d.Location.GetLineSpan();
+                    int line = lineSpan.StartLinePosition.Line + 1;
+                    return $"Línea {line}: {d.GetMessage()}";
+                }));
+
+                return (false, $"C# syntax error(s): {errors}");
+            }
+        }
+        else if (ext == ".json")
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(content);
+            }
+            catch (JsonException ex)
+            {
+                return (false, $"JSON syntax error: {ex.Message}");
+            }
+        }
+
+        return (true, null);
+    }
+
+    private static (bool Success, string UpdatedContent, string? ErrorMessage) ApplySingleSnippetReplacement(
+        string normalizedContent,
+        string originalSnippet,
+        string replacementSnippet)
+    {
+        string normalizedTarget = originalSnippet.Replace("\r\n", "\n");
+        string normalizedReplacement = replacementSnippet.Replace("\r\n", "\n");
+
+        int firstIndex = normalizedContent.IndexOf(normalizedTarget, StringComparison.Ordinal);
+
+        if (firstIndex >= 0)
+        {
+            int secondIndex = normalizedContent.IndexOf(normalizedTarget, firstIndex + normalizedTarget.Length, StringComparison.Ordinal);
+            if (secondIndex >= 0)
+            {
+                return (false, normalizedContent, "Original snippet matches multiple locations in the file. Provide more surrounding context to make it unique.");
+            }
+
+            string newContent = normalizedContent.Substring(0, firstIndex)
+                                + normalizedReplacement
+                                + normalizedContent.Substring(firstIndex + normalizedTarget.Length);
+            return (true, newContent, null);
+        }
+
+        // Fallback: Line-trimmed flexible matching for slight whitespace/indentation variations
+        var matchResult = TryLineTrimmedMatch(normalizedContent, normalizedTarget, normalizedReplacement);
+        if (!matchResult.Success)
+        {
+            return (false, normalizedContent, matchResult.ErrorMessage ?? "Snippet not found.");
+        }
+
+        return (true, matchResult.UpdatedContent!, null);
+    }
+
     [KernelFunction, Description("Writes full content to a file. Overwrites if existing, creates directories if missing.")]
     public string WriteFile(
         [Description("Relative path to the file to write")] string filePath,
@@ -267,6 +402,20 @@ public class FileTools
             _context?.Metrics.RecordToolCall(nameof(WriteFile));
             _context?.Logger.LogEvent("FileTools", "ToolCall", $"WriteFile: '{filePath}' ({content.Length} chars)");
 
+            var scopeCheck = ValidateMilestoneScope(filePath);
+            if (!scopeCheck.Allowed)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", scopeCheck.ErrorMessage!);
+                return scopeCheck.ErrorMessage!;
+            }
+
+            var syntaxCheck = ValidatePreFlightSyntax(filePath, content);
+            if (!syntaxCheck.IsValid)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", $"WriteFile pre-flight syntax check failed on '{filePath}': {syntaxCheck.ErrorMessage}");
+                return $"PRE-FLIGHT SYNTAX ERROR: Content contains syntax errors in '{filePath}'. Changes were NOT saved. Details: {syntaxCheck.ErrorMessage}. Please fix the syntax before writing.";
+            }
+
             string fullPath = ResolveSafePath(filePath);
             string? dir = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -277,6 +426,7 @@ public class FileTools
             File.WriteAllText(fullPath, content, Encoding.UTF8);
             string relPath = GetRelativePath(fullPath);
             _context?.ModifiedFiles.Add(relPath);
+            _context?.MilestoneModifiedFiles.Add(relPath);
             _context?.Logger.LogEvent("FileTools", "ToolResult", $"WriteFile SUCCESS: '{relPath}' ({content.Length} chars)");
             return $"SUCCESS: Wrote {content.Length} characters to '{relPath}'.";
         }
@@ -299,6 +449,13 @@ public class FileTools
             _context?.Metrics.RecordToolCall(nameof(ApplyDiff));
             _context?.Logger.LogEvent("FileTools", "ToolCall", $"ApplyDiff: '{filePath}'");
 
+            var scopeCheck = ValidateMilestoneScope(filePath);
+            if (!scopeCheck.Allowed)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", scopeCheck.ErrorMessage!);
+                return scopeCheck.ErrorMessage!;
+            }
+
             string fullPath = ResolveSafePath(filePath);
             if (!File.Exists(fullPath))
             {
@@ -308,49 +465,32 @@ public class FileTools
 
             string content = File.ReadAllText(fullPath);
             bool hasCrLf = content.Contains("\r\n");
-
-            // Normalize newlines to avoid line-ending mismatches (\r\n vs \n)
             string normalizedContent = content.Replace("\r\n", "\n");
-            string normalizedTarget = originalSnippet.Replace("\r\n", "\n");
-            string normalizedReplacement = replacementSnippet.Replace("\r\n", "\n");
 
-            string newContent;
-            int firstIndex = normalizedContent.IndexOf(normalizedTarget, StringComparison.Ordinal);
-
-            if (firstIndex >= 0)
+            var replacementResult = ApplySingleSnippetReplacement(normalizedContent, originalSnippet, replacementSnippet);
+            if (!replacementResult.Success)
             {
-                int secondIndex = normalizedContent.IndexOf(normalizedTarget, firstIndex + normalizedTarget.Length, StringComparison.Ordinal);
-                if (secondIndex >= 0)
-                {
-                    _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyDiff: snippet matches multiple locations in '{filePath}'.");
-                    return $"ERROR: Original snippet matches multiple locations in '{filePath}'. Provide more surrounding context to make it unique.";
-                }
-
-                newContent = normalizedContent.Substring(0, firstIndex)
-                            + normalizedReplacement
-                            + normalizedContent.Substring(firstIndex + normalizedTarget.Length);
-            }
-            else
-            {
-                // Fallback: Line-trimmed flexible matching for slight whitespace/indentation variations
-                var matchResult = TryLineTrimmedMatch(normalizedContent, normalizedTarget, normalizedReplacement);
-                if (!matchResult.Success)
-                {
-                    _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyDiff: snippet not found in '{filePath}'. Reason: {matchResult.ErrorMessage}");
-                    return $"ERROR: Original snippet not found in '{filePath}'. {matchResult.ErrorMessage}";
-                }
-                newContent = matchResult.UpdatedContent!;
+                _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyDiff: failed on '{filePath}'. Reason: {replacementResult.ErrorMessage}");
+                return $"ERROR: {replacementResult.ErrorMessage}";
             }
 
+            string newContent = replacementResult.UpdatedContent;
             if (hasCrLf)
             {
-                // Ensure consistent \r\n endings without double-CR (\r\r\n)
                 newContent = newContent.Replace("\r\n", "\n").Replace("\n", "\r\n");
+            }
+
+            var syntaxCheck = ValidatePreFlightSyntax(filePath, newContent);
+            if (!syntaxCheck.IsValid)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyDiff pre-flight syntax check failed on '{filePath}': {syntaxCheck.ErrorMessage}");
+                return $"PRE-FLIGHT SYNTAX ERROR: The proposed diff would introduce syntax errors in '{filePath}'. Changes were NOT saved. Details: {syntaxCheck.ErrorMessage}. Please fix your replacement snippet.";
             }
 
             File.WriteAllText(fullPath, newContent, Encoding.UTF8);
             string relDiffPath = GetRelativePath(fullPath);
             _context?.ModifiedFiles.Add(relDiffPath);
+            _context?.MilestoneModifiedFiles.Add(relDiffPath);
             _context?.Logger.LogEvent("FileTools", "ToolResult", $"ApplyDiff SUCCESS: '{relDiffPath}'");
             return $"SUCCESS: Applied diff to '{relDiffPath}'.";
         }
@@ -358,6 +498,96 @@ public class FileTools
         {
             _context?.Logger.LogEvent("FileTools", "Error", $"ApplyDiff error on '{filePath}': {ex.Message}");
             return $"ERROR applying diff to '{filePath}': {ex.Message}";
+        }
+    }
+
+    [KernelFunction, Description("Applies multiple non-contiguous surgical code diffs to a single file atomically. If any snippet fails to match or introduces syntax errors, no changes are applied.")]
+    public string ApplyMultiDiff(
+        [Description("Relative path to the file to modify")] string filePath,
+        [Description("JSON array of diff objects containing 'originalSnippet' and 'replacementSnippet'. Example: [{\"originalSnippet\": \"...\", \"replacementSnippet\": \"...\"}]")] string diffsJson)
+    {
+        try
+        {
+            AnsiConsole.MarkupLine($"[grey]  ↳ [cyan]ApplyMultiDiff[/]:[/] [yellow]{Markup.Escape(filePath)}[/]");
+            _context?.Metrics.RecordToolCall(nameof(ApplyMultiDiff));
+            _context?.Logger.LogEvent("FileTools", "ToolCall", $"ApplyMultiDiff: '{filePath}'");
+
+            var scopeCheck = ValidateMilestoneScope(filePath);
+            if (!scopeCheck.Allowed)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", scopeCheck.ErrorMessage!);
+                return scopeCheck.ErrorMessage!;
+            }
+
+            List<DiffChunk>? chunks;
+            try
+            {
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                chunks = JsonSerializer.Deserialize<List<DiffChunk>>(diffsJson, options);
+            }
+            catch (Exception ex)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyMultiDiff JSON parse error on '{filePath}': {ex.Message}");
+                return $"ERROR: Failed to parse 'diffsJson'. Ensure it is a valid JSON array of objects with 'originalSnippet' and 'replacementSnippet'. Details: {ex.Message}";
+            }
+
+            if (chunks == null || chunks.Count == 0)
+            {
+                return "ERROR: No diff chunks provided in 'diffsJson'.";
+            }
+
+            string fullPath = ResolveSafePath(filePath);
+            if (!File.Exists(fullPath))
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyMultiDiff: File '{filePath}' does not exist.");
+                return $"ERROR: File '{filePath}' does not exist.";
+            }
+
+            string content = File.ReadAllText(fullPath);
+            bool hasCrLf = content.Contains("\r\n");
+            string currentContent = content.Replace("\r\n", "\n");
+
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                var chunk = chunks[i];
+                if (string.IsNullOrEmpty(chunk.OriginalSnippet))
+                {
+                    return $"ERROR in chunk #{i + 1}: 'originalSnippet' is empty. Transaction aborted without changes.";
+                }
+
+                var stepResult = ApplySingleSnippetReplacement(currentContent, chunk.OriginalSnippet, chunk.ReplacementSnippet ?? string.Empty);
+                if (!stepResult.Success)
+                {
+                    _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyMultiDiff chunk #{i + 1} failed on '{filePath}': {stepResult.ErrorMessage}");
+                    return $"TRANSACTION ABORTED: Chunk #{i + 1} of {chunks.Count} failed: {stepResult.ErrorMessage}. No changes were applied to '{filePath}'.";
+                }
+
+                currentContent = stepResult.UpdatedContent;
+            }
+
+            if (hasCrLf)
+            {
+                currentContent = currentContent.Replace("\r\n", "\n").Replace("\n", "\r\n");
+            }
+
+            var syntaxCheck = ValidatePreFlightSyntax(filePath, currentContent);
+            if (!syntaxCheck.IsValid)
+            {
+                _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyMultiDiff pre-flight syntax check failed on '{filePath}': {syntaxCheck.ErrorMessage}");
+                return $"PRE-FLIGHT SYNTAX ERROR: The proposed multi-diff would introduce syntax errors in '{filePath}'. Changes were NOT saved. Details: {syntaxCheck.ErrorMessage}. Please fix your replacement snippets.";
+            }
+
+            File.WriteAllText(fullPath, currentContent, Encoding.UTF8);
+            string relDiffPath = GetRelativePath(fullPath);
+            _context?.ModifiedFiles.Add(relDiffPath);
+            _context?.MilestoneModifiedFiles.Add(relDiffPath);
+            _context?.Logger.LogEvent("FileTools", "ToolResult", $"ApplyMultiDiff SUCCESS: '{relDiffPath}' ({chunks.Count} chunks)");
+            return $"SUCCESS: Atomically applied {chunks.Count} diff chunks to '{relDiffPath}'.";
+        }
+        catch (Exception ex)
+        {
+            _context?.Logger.LogEvent("FileTools", "Error", $"ApplyMultiDiff error on '{filePath}': {ex.Message}");
+            return $"ERROR applying multi-diff to '{filePath}': {ex.Message}";
         }
     }
 
@@ -509,7 +739,12 @@ public class FileTools
                 typeof(FileTools).GetMethod(nameof(ApplyDiff))!,
                 tools,
                 functionName: nameof(ApplyDiff),
-                description: "Applies a surgical code replacement in a file")
+                description: "Applies a surgical code replacement in a file"),
+            KernelFunctionFactory.CreateFromMethod(
+                typeof(FileTools).GetMethod(nameof(ApplyMultiDiff))!,
+                tools,
+                functionName: nameof(ApplyMultiDiff),
+                description: "Applies multiple non-contiguous surgical code diffs to a single file atomically")
         };
 
         return KernelPluginFactory.CreateFromFunctions("FileTools", "Surgical code modification tools", functions);

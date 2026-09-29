@@ -174,6 +174,7 @@ public static class RunReportGenerator
                     "SearchCode" => "Búsqueda de patrones y símbolos",
                     "WriteFile" => "Creación / sobrescritura de archivos",
                     "ApplyDiff" => "Modificación quirúrgica sin tocar el resto del archivo",
+                    "ApplyMultiDiff" => "Modificación atómica de múltiples fragmentos en un archivo",
                     "RunCommand" => "Ejecución de pruebas o linters en consola",
                     "CheckoutNewBranch" => "Creación de rama de trabajo en Git",
                     "CommitFiles" => "Stage y commit quirúrgico de archivos",

@@ -74,6 +74,7 @@ public class CoderAgent : SubagentBase, ICoderAgent
                 INSTRUCTIONS:
                 - Implement the required changes respecting the project architecture and reference style conventions.
                 - Use `ApplyDiff` for existing files to ensure minimal surgical edits. Ensure the originalSnippet is unique.
+                - Use `ApplyMultiDiff` when you need to apply multiple non-contiguous modifications to the same file atomically.
                 - Use `WriteFile` only if creating new files or replacing an entire file.
                 - When complete, provide a summary of the files modified or created.
                 """;
@@ -81,10 +82,14 @@ public class CoderAgent : SubagentBase, ICoderAgent
         else
         {
             string reviewResults = context.ReadReviewResults();
+            string modifiedFilesBlock = context.ModifiedFiles.Count > 0
+                ? $"\nFILES ALREADY MODIFIED IN PREVIOUS ITERATIONS:\n- {string.Join("\n- ", context.ModifiedFiles)}\n"
+                : string.Empty;
+
             userPrompt = $"""
                 ASSIGNED TASK:
                 {task}
-                {guidanceBlock}{localRulesBlock}{milestoneBlock}
+                {guidanceBlock}{localRulesBlock}{milestoneBlock}{modifiedFilesBlock}
                 OPERATIONAL MODE:
                 {context.ModePolicy.DisplayName}
 
@@ -98,7 +103,9 @@ public class CoderAgent : SubagentBase, ICoderAgent
 
                 INSTRUCTIONS:
                 - Analyze the specific compilation errors or test failures above.
-                - Apply surgical fixes using `ApplyDiff` or `WriteFile` to resolve each failure.
+                - Inspect the failing files using `ReadFile` with line ranges around the errors.
+                - Apply targeted surgical fixes using `ApplyDiff` or `ApplyMultiDiff` to resolve each failure.
+                - Avoid repeating past mistakes: make sure your replacement snippets do not introduce syntax errors.
                 - When finished, summarize the fixes applied.
                 """;
         }
