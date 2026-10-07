@@ -26,7 +26,7 @@ public class ScoutAgent : SubagentBase, IScoutAgent
         var history = new ChatHistory();
         history.AddSystemMessage(systemPrompt);
 
-        string task = context.ReadTask();
+        string task = await context.ReadTaskAsync(cancellationToken);
         string localRulesBlock = !string.IsNullOrWhiteSpace(context.LocalRules)
             ? $"\nLOCAL REPOSITORY RULES & CONSTRAINTS (.devbotrules):\n{context.LocalRules}\n"
             : string.Empty;
@@ -68,7 +68,7 @@ public class ScoutAgent : SubagentBase, IScoutAgent
         }
 
         // 5. Persist deliverable to .agent/scout_report.md
-        context.SaveScoutReport(report);
+        await context.SaveScoutReportAsync(report, cancellationToken);
         AnsiConsole.MarkupLine($"[bold green]✔ [[Scout Agent]][/] Reporte generado y persistido en [yellow]{Markup.Escape(context.ScoutReportPath)}[/]");
         return true;
     }

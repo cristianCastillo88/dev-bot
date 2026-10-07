@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using DevBot.Cli.Core;
 using Microsoft.SemanticKernel;
 
 namespace DevBot.Cli.Tools;
@@ -9,9 +10,18 @@ namespace DevBot.Cli.Tools;
 /// <summary>
 /// Implementación de herramientas para interactuar con repositorios Git y utilidades de GitHub CLI.
 /// </summary>
-public class GitTools : IGitTools
+public partial class GitTools : IGitTools
 {
     private readonly string _repoRoot;
+
+    [GeneratedRegex(@"[^a-z0-9\s-]")]
+    private static partial Regex NonAlphanumericSlugRegex();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex MultipleWhitespaceRegex();
+
+    [GeneratedRegex(@"github\.com[:/](?<owner>[^/\s]+)/(?<repo>[^/\s.]+)(\.git)?", RegexOptions.IgnoreCase)]
+    private static partial Regex GitHubRepoUrlRegex();
 
     /// <summary>
     /// Inicializa una nueva instancia de <see cref="GitTools"/>.
@@ -23,52 +33,11 @@ public class GitTools : IGitTools
         _repoRoot = Path.GetFullPath(repoRoot);
     }
 
-    private async Task<(int ExitCode, string Output, string Error)> RunGitAsync(
+    private Task<(int ExitCode, string Output, string Error)> RunGitAsync(
         string arguments,
         int timeoutSeconds = 30,
         CancellationToken cancellationToken = default)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "git",
-            Arguments = arguments,
-            WorkingDirectory = _repoRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
-        };
-
-        using var process = new Process { StartInfo = psi };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-        try
-        {
-            await process.WaitForExitAsync(linkedCts.Token);
-            return (process.ExitCode, stdout.ToString().Trim(), stderr.ToString().Trim());
-        }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            if (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            return (-1, stdout.ToString(), "Git command timed out.");
-        }
-    }
+        => RunProcessAsync("git", arguments, timeoutSeconds, cancellationToken);
 
     /// <inheritdoc />
     public async Task<bool> IsGitRepositoryAsync(CancellationToken cancellationToken = default)
@@ -93,8 +62,8 @@ public class GitTools : IGitTools
     {
         if (string.IsNullOrWhiteSpace(text)) return "devbot-task";
         string slug = text.ToLowerInvariant();
-        slug = Regex.Replace(slug, @"[^a-z0-9\s-]", "");
-        slug = Regex.Replace(slug, @"\s+", "-").Trim('-');
+        slug = NonAlphanumericSlugRegex().Replace(slug, "");
+        slug = MultipleWhitespaceRegex().Replace(slug, "-").Trim('-');
         if (slug.Length > 40) slug = slug[..40].TrimEnd('-');
         return string.IsNullOrWhiteSpace(slug) ? "devbot-task" : slug;
     }
@@ -103,6 +72,7 @@ public class GitTools : IGitTools
     [KernelFunction, Description("Creates and switches to a new feature branch in git.")]
     public async Task<string> CheckoutNewBranch(string branchName, CancellationToken cancellationToken = default)
     {
+        InputSanitizer.ValidateBranchName(branchName);
         var result = await RunGitAsync($"checkout -b {branchName}", cancellationToken: cancellationToken);
         if (result.ExitCode == 0)
         {
@@ -123,6 +93,7 @@ public class GitTools : IGitTools
     [KernelFunction, Description("Checks out an existing git branch.")]
     public async Task<string> CheckoutBranch(string branchName, CancellationToken cancellationToken = default)
     {
+        InputSanitizer.ValidateBranchName(branchName);
         var result = await RunGitAsync($"checkout {branchName}", cancellationToken: cancellationToken);
         return result.ExitCode == 0
             ? $"SUCCESS: Switched to branch '{branchName}'."
@@ -133,6 +104,7 @@ public class GitTools : IGitTools
     [KernelFunction, Description("Deletes a git branch.")]
     public async Task<string> DeleteBranch(string branchName, CancellationToken cancellationToken = default)
     {
+        InputSanitizer.ValidateBranchName(branchName);
         var result = await RunGitAsync($"branch -D {branchName}", cancellationToken: cancellationToken);
         return result.ExitCode == 0
             ? $"SUCCESS: Deleted branch '{branchName}'."
@@ -183,7 +155,8 @@ public class GitTools : IGitTools
         }
         finally
         {
-            try { File.Delete(tempMsgFile); } catch { }
+            try { File.Delete(tempMsgFile); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal deleting temp commit file: {ex.Message}"); }
         }
     }
 
@@ -213,7 +186,8 @@ public class GitTools : IGitTools
         }
         finally
         {
-            try { File.Delete(tempMsgFile); } catch { }
+            try { File.Delete(tempMsgFile); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal deleting temp commit file: {ex.Message}"); }
         }
     }
 
@@ -294,9 +268,9 @@ public class GitTools : IGitTools
                 File.WriteAllText(excludeFile, pattern + Environment.NewLine);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Non-fatal if .git/info/exclude cannot be modified
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal modifying .git/info/exclude: {ex.Message}");
         }
     }
 
@@ -304,6 +278,7 @@ public class GitTools : IGitTools
     [KernelFunction, Description("Pushes the specified branch to the origin remote.")]
     public async Task<(bool Success, string Output, string Error)> PushBranch(string branchName, CancellationToken cancellationToken = default)
     {
+        InputSanitizer.ValidateBranchName(branchName);
         var result = await RunGitAsync($"push -u origin {branchName}", cancellationToken: cancellationToken);
         return (result.ExitCode == 0, result.Output, result.Error);
     }
@@ -316,6 +291,9 @@ public class GitTools : IGitTools
         string body,
         CancellationToken cancellationToken = default)
     {
+        InputSanitizer.ValidateBranchName(branchName);
+        InputSanitizer.ValidateBranchName(baseBranch);
+
         // 1. Try creating Pull Request via GitHub CLI (`gh`)
         // NOTE: Strictly without --auto or merge flags, waiting exclusively for manual human review!
         string safeTitle = title.Replace("\"", "\\\"");
@@ -346,6 +324,9 @@ public class GitTools : IGitTools
     /// <inheritdoc />
     public async Task<string> GetGitHubCompareUrlAsync(string branchName, string baseBranch, CancellationToken cancellationToken = default)
     {
+        InputSanitizer.ValidateBranchName(branchName);
+        InputSanitizer.ValidateBranchName(baseBranch);
+
         var remoteResult = await RunGitAsync("remote get-url origin", cancellationToken: cancellationToken);
         if (remoteResult.ExitCode != 0 || string.IsNullOrWhiteSpace(remoteResult.Output))
         {
@@ -353,7 +334,7 @@ public class GitTools : IGitTools
         }
 
         string rawUrl = remoteResult.Output.Trim();
-        var match = Regex.Match(rawUrl, @"github\.com[:/](?<owner>[^/\s]+)/(?<repo>[^/\s.]+)(\.git)?", RegexOptions.IgnoreCase);
+        var match = GitHubRepoUrlRegex().Match(rawUrl);
         if (match.Success)
         {
             string owner = match.Groups["owner"].Value;
@@ -398,16 +379,22 @@ public class GitTools : IGitTools
 
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-            await process.WaitForExitAsync(linkedCts.Token);
-            return (process.ExitCode, stdout.ToString().Trim(), stderr.ToString().Trim());
-        }
-        catch (OperationCanceledException)
-        {
-            if (cancellationToken.IsCancellationRequested)
+            try
             {
-                throw;
+                await process.WaitForExitAsync(linkedCts.Token);
+                return (process.ExitCode, stdout.ToString().Trim(), stderr.ToString().Trim());
             }
-            return (-1, string.Empty, "Process timed out.");
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal killing {fileName} process tree: {ex.Message}"); }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                return (-1, stdout.ToString().Trim(), $"{fileName} process timed out.");
+            }
         }
         catch (Exception ex)
         {

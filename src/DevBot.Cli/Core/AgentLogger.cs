@@ -42,9 +42,9 @@ public sealed class AgentLogger
         {
             File.WriteAllText(_latestLogPath, $"=== DevBot Execution Log Started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}", Encoding.UTF8);
         }
-        catch
+        catch (Exception ex)
         {
-            // No crítico si la escritura inicial falla por bloqueos transitorios
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal initializing latest.log: {ex.Message}");
         }
     }
 
@@ -86,9 +86,9 @@ public sealed class AgentLogger
                 File.AppendAllText(_latestLogPath, line, Encoding.UTF8);
                 File.AppendAllText(_sessionLogPath, line, Encoding.UTF8);
             }
-            catch
+            catch (Exception ex)
             {
-                // No crítico si el append falla
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal appending to agent log: {ex.Message}");
             }
         }
     }
@@ -122,9 +122,9 @@ public sealed class AgentLogger
                 File.WriteAllText(_latestJsonPath, json, Encoding.UTF8);
                 File.WriteAllText(_sessionJsonPath, json, Encoding.UTF8);
             }
-            catch
+            catch (Exception ex)
             {
-                // No crítico si la serialización falla
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal serializing agent log to JSON: {ex.Message}");
             }
         }
     }

@@ -27,8 +27,8 @@ public class PlannerAgent : SubagentBase, IPlannerAgent
         var history = new ChatHistory();
         history.AddSystemMessage(systemPrompt);
 
-        string task = context.ReadTask();
-        string scoutReport = context.ReadScoutReport();
+        string task = await context.ReadTaskAsync(cancellationToken);
+        string scoutReport = await context.ReadScoutReportAsync(cancellationToken);
         string defaultVerifyCmd = context.StackInfo.BuildTool switch
         {
             "dotnet" => !string.IsNullOrWhiteSpace(context.StackInfo.DetectedFile)
@@ -86,7 +86,7 @@ public class PlannerAgent : SubagentBase, IPlannerAgent
         var plan = ExtractPlanDefinition(result, task, defaultVerifyCmd);
 
         // 6. Save plan to context & files
-        context.SavePlan(plan);
+        await context.SavePlanAsync(plan, cancellationToken);
 
         // 7. Render plan in console
         RenderPlanTable(plan);

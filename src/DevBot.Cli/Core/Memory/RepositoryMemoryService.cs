@@ -21,8 +21,9 @@ public class RepositoryMemoryService : IRepositoryMemoryService
             string json = await File.ReadAllTextAsync(mapPath, ct);
             return JsonSerializer.Deserialize<RepoMap>(json, JsonOptions);
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal loading repo map: {ex.Message}");
             return null;
         }
     }
@@ -41,9 +42,9 @@ public class RepositoryMemoryService : IRepositoryMemoryService
             string json = JsonSerializer.Serialize(map, JsonOptions);
             await File.WriteAllTextAsync(mapPath, json, ct);
         }
-        catch
+        catch (Exception ex)
         {
-            // Non-fatal if persistence fails
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal saving repo map: {ex.Message}");
         }
     }
 
@@ -57,7 +58,10 @@ public class RepositoryMemoryService : IRepositoryMemoryService
                 string text = await File.ReadAllTextAsync(rulesFile, ct);
                 if (!string.IsNullOrWhiteSpace(text)) return text.Trim();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal reading .devbotrules: {ex.Message}");
+            }
         }
 
         string jsonRulesFile = Path.Combine(repoRoot, "devbot.json");
@@ -85,7 +89,10 @@ public class RepositoryMemoryService : IRepositoryMemoryService
                 }
                 return json.Trim();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal reading devbot.json: {ex.Message}");
+            }
         }
 
         return null;
@@ -153,9 +160,9 @@ public class RepositoryMemoryService : IRepositoryMemoryService
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Non-fatal if filesystem enumeration encounters errors
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal during repo map scanning: {ex.Message}");
         }
 
         map.Entrypoints = entrypoints;

@@ -40,7 +40,10 @@ public static class RunReportGenerator
         sb.AppendLine("## 2. Requerimiento Asignado");
         sb.AppendLine();
         sb.AppendLine("```text");
-        sb.AppendLine(string.IsNullOrWhiteSpace(context.TaskDescription) ? context.ReadTask() : context.TaskDescription);
+        string taskDescription = !string.IsNullOrWhiteSpace(context.TaskDescription)
+            ? context.TaskDescription
+            : (File.Exists(context.Workspace.TaskFilePath) ? File.ReadAllText(context.Workspace.TaskFilePath) : string.Empty);
+        sb.AppendLine(taskDescription);
         sb.AppendLine("```");
         sb.AppendLine();
 
@@ -89,7 +92,9 @@ public static class RunReportGenerator
         sb.AppendLine();
 
         // Scout
-        string scoutReport = context.ReadScoutReport();
+        string scoutReport = File.Exists(context.Workspace.ScoutReportPath)
+            ? File.ReadAllText(context.Workspace.ScoutReportPath)
+            : string.Empty;
         sb.AppendLine("### 🔍 Scout Agent (Análisis Arquitectónico)");
         if (!string.IsNullOrWhiteSpace(scoutReport))
         {
@@ -112,7 +117,9 @@ public static class RunReportGenerator
         }
 
         // Reviewer
-        string reviewResults = context.ReadReviewResults();
+        string reviewResults = File.Exists(context.Workspace.ReviewResultsPath)
+            ? File.ReadAllText(context.Workspace.ReviewResultsPath)
+            : string.Empty;
         sb.AppendLine("### 🧪 Reviewer Agent (Pruebas y Verificación Determinista)");
         if (!string.IsNullOrWhiteSpace(reviewResults))
         {
@@ -191,7 +198,8 @@ public static class RunReportGenerator
 
         // 7. Footer
         sb.AppendLine("---");
-        sb.AppendLine($"*Reporte generado automáticamente por **DevBot v1.1.0** en `{timestamp}`.*");
+        string version = typeof(RunReportGenerator).Assembly.GetName().Version?.ToString(3) ?? "1.4.6";
+        sb.AppendLine($"*Reporte generado automáticamente por **DevBot v{version}** en `{timestamp}`.*");
 
         string reportContent = sb.ToString();
 
@@ -207,9 +215,10 @@ public static class RunReportGenerator
             string historicalPath = Path.Combine(context.ReportsDir, $"report_{fileTimestamp}.md");
             File.WriteAllText(historicalPath, reportContent, Encoding.UTF8);
         }
-        catch
+        catch (Exception ex)
         {
-            // Non-fatal if writing to file fails
+            context.Logger?.LogEvent("ReportGenerator", "Warning", $"Non-fatal error persisting report: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal error persisting report: {ex.Message}");
         }
 
         return reportContent;

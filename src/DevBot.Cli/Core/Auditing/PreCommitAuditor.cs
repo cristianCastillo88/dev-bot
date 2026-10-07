@@ -31,9 +31,9 @@ public class PreCommitAuditor : IPreCommitAuditor
                     var findings = _scanner.ScanContent(relativeFile, content);
                     allFindings.AddRange(findings);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore unreadable files
+                    System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal reading file '{fullPath}' for secret audit: {ex.Message}");
                 }
             }
         }

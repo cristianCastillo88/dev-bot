@@ -1,17 +1,17 @@
-using System.Text.Json;
+using DevBot.Cli.Core.Validation;
 using DevBot.Cli.Tools;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 namespace DevBot.Cli.Core.Strategies;
 
 public class DotNetStrategy : IBuildAndTestStrategy
 {
     private readonly string? _targetFile;
+    private readonly ISyntaxValidator _syntaxValidator;
 
-    public DotNetStrategy(string? targetFile = null)
+    public DotNetStrategy(string? targetFile = null, ISyntaxValidator? syntaxValidator = null)
     {
         _targetFile = targetFile;
+        _syntaxValidator = syntaxValidator ?? new RoslynSyntaxValidator();
     }
 
     public ProjectStackType SupportedStack => ProjectStackType.DotNet;
@@ -23,52 +23,7 @@ public class DotNetStrategy : IBuildAndTestStrategy
         TerminalTools terminal,
         CancellationToken ct = default)
     {
-        string ext = Path.GetExtension(filePath).ToLowerInvariant();
-        if (ext == ".cs")
-        {
-            bool hasDeclarations = content.Contains("class ") ||
-                                   content.Contains("record ") ||
-                                   content.Contains("interface ") ||
-                                   content.Contains("struct ") ||
-                                   content.Contains("namespace ") ||
-                                   content.Contains("enum ");
-
-            if (!hasDeclarations)
-            {
-                return Task.FromResult(SyntaxValidationResult.Success());
-            }
-
-            var syntaxTree = CSharpSyntaxTree.ParseText(content, cancellationToken: ct);
-            var diagnostics = syntaxTree.GetDiagnostics(ct)
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .Take(3)
-                .ToList();
-
-            if (diagnostics.Count > 0)
-            {
-                var errors = string.Join("; ", diagnostics.Select(d =>
-                {
-                    var lineSpan = d.Location.GetLineSpan();
-                    int line = lineSpan.StartLinePosition.Line + 1;
-                    return $"Línea {line}: {d.GetMessage()}";
-                }));
-
-                return Task.FromResult(SyntaxValidationResult.Failure($"C# syntax error(s): {errors}"));
-            }
-        }
-        else if (ext == ".json")
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(content);
-            }
-            catch (JsonException ex)
-            {
-                return Task.FromResult(SyntaxValidationResult.Failure($"JSON syntax error: {ex.Message}"));
-            }
-        }
-
-        return Task.FromResult(SyntaxValidationResult.Success());
+        return _syntaxValidator.ValidateAsync(filePath, content, ct);
     }
 
     public async Task<StrategyExecutionResult> BuildAsync(TerminalTools terminal, CancellationToken ct = default)

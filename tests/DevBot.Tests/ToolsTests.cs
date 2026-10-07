@@ -1,6 +1,7 @@
 using DevBot.Cli.Core;
 using DevBot.Cli.Core.Planning;
 using DevBot.Cli.Core.Strategies;
+using DevBot.Cli.Core.Validation;
 using DevBot.Cli.Tools;
 using Xunit;
 
@@ -403,5 +404,170 @@ public class ToolsTests : IDisposable
         var tools = new FileTools(_testDir, context);
         string writeResult = tools.WriteFile("script.py", "def add(a, b):\n    return a + b\n");
         Assert.Contains("SUCCESS", writeResult);
+    }
+
+    [Fact]
+    public void RoslynSyntaxValidator_ValidatesCSharpAndJson_Correctly()
+    {
+        ISyntaxValidator validator = new RoslynSyntaxValidator();
+
+        // Valid C#
+        var validCs = validator.Validate("Test.cs", "namespace Demo; public class Foo { public int Bar { get; set; } }");
+        Assert.True(validCs.IsValid);
+        Assert.Null(validCs.ErrorMessage);
+
+        // Invalid C#
+        var invalidCs = validator.Validate("Test.cs", "namespace Demo; public class Foo { public int Bar { get; set } }"); // missing semicolon
+        Assert.False(invalidCs.IsValid);
+        Assert.NotNull(invalidCs.ErrorMessage);
+        Assert.Contains("C# syntax error", invalidCs.ErrorMessage);
+
+        // Valid JSON
+        var validJson = validator.Validate("appsettings.json", "{ \"Logging\": { \"LogLevel\": { \"Default\": \"Information\" } } }");
+        Assert.True(validJson.IsValid);
+
+        // Invalid JSON
+        var invalidJson = validator.Validate("appsettings.json", "{ \"Logging\": { incomplete ");
+        Assert.False(invalidJson.IsValid);
+        Assert.NotNull(invalidJson.ErrorMessage);
+        Assert.Contains("JSON syntax error", invalidJson.ErrorMessage);
+
+        // Non-code files are always considered valid
+        var otherFile = validator.Validate("readme.txt", "Some random text without structure");
+        Assert.True(otherFile.IsValid);
+    }
+
+    [Fact]
+    public void OutputSanitizer_FiltersControlCharsAndTruncates_Correctly()
+    {
+        // 1. Keeps \r, \n, \t and normal chars
+        string raw = "Hello\tWorld!\r\nLine 2";
+        Assert.Equal("Hello\tWorld!\r\nLine 2", OutputSanitizer.Sanitize(raw));
+
+        // 2. Removes null bytes and control chars (e.g. \0, \x01, \x08, etc.)
+        string corrupted = "Hello\0\u0001\u0008World";
+        Assert.Equal("HelloWorld", OutputSanitizer.Sanitize(corrupted));
+
+        // 3. Null or empty returns empty
+        Assert.Equal(string.Empty, OutputSanitizer.Sanitize(null));
+        Assert.Equal(string.Empty, OutputSanitizer.Sanitize(""));
+
+        // 4. Truncates when length exceeds maxLength
+        string longText = new string('A', 50);
+        string sanitized = OutputSanitizer.Sanitize(longText, 20);
+        Assert.StartsWith(new string('A', 20), sanitized);
+        Assert.Contains("truncado", sanitized);
+    }
+
+    [Fact]
+    public void FileReadOperations_And_FileWriteOperations_WorkIndependently()
+    {
+        var readOps = new FileReadOperations(_testDir);
+        var writeOps = new FileWriteOperations(_testDir);
+
+        // Write with writeOps
+        string writeRes = writeOps.WriteFile("independent.txt", "line1\nline2\nline3");
+        Assert.Contains("SUCCESS", writeRes);
+
+        // Read with readOps
+        string readRes = readOps.ReadFile("independent.txt");
+        Assert.Contains("line1", readRes);
+        Assert.Contains("line3", readRes);
+
+        // List with readOps
+        string listRes = readOps.ListFiles(".");
+        Assert.Contains("independent.txt", listRes);
+
+        // Search with readOps
+        string searchRes = readOps.SearchCode("line2");
+        Assert.Contains("independent.txt", searchRes);
+
+        // Apply diff with writeOps
+        string diffRes = writeOps.ApplyDiff("independent.txt", "line2", "line2_modified");
+        Assert.Contains("SUCCESS", diffRes);
+        string updatedRead = readOps.ReadFile("independent.txt");
+        Assert.Contains("line2_modified", updatedRead);
+    }
+
+    [Fact]
+    public void ToolPluginFactory_ProducesExpectedPlugins()
+    {
+        var scoutPlugin = ToolPluginFactory.CreateScoutPlugin(_testDir);
+        var coderPlugin = ToolPluginFactory.CreateCoderPlugin(_testDir);
+        var reviewerPlugin = ToolPluginFactory.CreateReviewerPlugin(_testDir);
+
+        Assert.Equal("FileTools", scoutPlugin.Name);
+        Assert.Equal(3, scoutPlugin.Count()); // ReadFile, ListFiles, SearchCode
+
+        Assert.Equal("FileTools", coderPlugin.Name);
+        Assert.Equal(4, coderPlugin.Count()); // ReadFile, WriteFile, ApplyDiff, ApplyMultiDiff
+
+        Assert.Equal("FileTools", reviewerPlugin.Name);
+        Assert.Single(reviewerPlugin); // ReadFile
+    }
+
+    [Fact]
+    public void InputSanitizer_ValidatesBranchNames_AgainstInjection()
+    {
+        // Valid branch names
+        Assert.Equal("feature/add-login", InputSanitizer.ValidateBranchName("feature/add-login"));
+        Assert.Equal("bugfix/issue-123_test.v1", InputSanitizer.ValidateBranchName("bugfix/issue-123_test.v1"));
+        Assert.Equal("main", InputSanitizer.ValidateBranchName("main"));
+
+        // Malicious branch names with command injection characters
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName("feature; rm -rf /"));
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName("test && whoami"));
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName("branch | cat /etc/passwd"));
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName("`reboot`"));
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName("$(whoami)"));
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName("../../../traversal"));
+        Assert.Throws<ArgumentException>(() => InputSanitizer.ValidateBranchName(""));
+    }
+
+    [Fact]
+    public void InputSanitizer_ValidatesCommands_AgainstWhitelist()
+    {
+        // Allowed commands
+        Assert.Equal("dotnet", InputSanitizer.ValidateCommand("dotnet"));
+        Assert.Equal("npm", InputSanitizer.ValidateCommand("npm"));
+        Assert.Equal("git", InputSanitizer.ValidateCommand("git"));
+        Assert.Equal("pytest", InputSanitizer.ValidateCommand("pytest"));
+        Assert.Equal("flake8", InputSanitizer.ValidateCommand("flake8"));
+
+        // Blocked unapproved or dangerous commands
+        Assert.Throws<UnauthorizedAccessException>(() => InputSanitizer.ValidateCommand("cmd.exe"));
+        Assert.Throws<UnauthorizedAccessException>(() => InputSanitizer.ValidateCommand("powershell"));
+        Assert.Throws<UnauthorizedAccessException>(() => InputSanitizer.ValidateCommand("bash"));
+        Assert.Throws<UnauthorizedAccessException>(() => InputSanitizer.ValidateCommand("curl"));
+        Assert.Throws<UnauthorizedAccessException>(() => InputSanitizer.ValidateCommand("wget"));
+        Assert.Throws<UnauthorizedAccessException>(() => InputSanitizer.ValidateCommand("rm"));
+    }
+
+    [Fact]
+    public async Task TerminalTools_BlocksUnauthorizedCommands()
+    {
+        var tools = new TerminalTools(_testDir);
+
+        // Direct blocked command
+        string result1 = await tools.RunCommand("powershell", "-Command Get-Process");
+        Assert.Contains("ERROR", result1);
+        Assert.Contains("not in the allowed execution whitelist", result1);
+
+        // Chained malicious command
+        string result2 = await tools.RunCommand("dotnet", "test && powershell -c calc");
+        Assert.Contains("ERROR", result2);
+        Assert.Contains("not in the allowed execution whitelist", result2);
+    }
+
+    [Fact]
+    public async Task GitTools_RejectsMaliciousBranchNames()
+    {
+        var tools = new GitTools(_testDir);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tools.CheckoutNewBranch("malicious; whoami"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tools.PushBranch("branch && rm -rf /"));
     }
 }

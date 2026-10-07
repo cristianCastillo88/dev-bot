@@ -2,6 +2,7 @@ using DevBot.Cli.Core.Auditing;
 using DevBot.Cli.Core.Configuration;
 using DevBot.Cli.Core.Memory;
 using DevBot.Cli.Core.Strategies;
+using DevBot.Cli.Core.Validation;
 using DevBot.Cli.Subagents;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,16 +27,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRepositoryMemoryService, RepositoryMemoryService>();
         services.AddSingleton<IPreCommitAuditor, PreCommitAuditor>();
         services.AddSingleton<ICredentialStorageService, CredentialStorageService>();
+        services.AddSingleton<ISyntaxValidator, RoslynSyntaxValidator>();
 
-        // Subagentes Transient (interfaces y tipos concretos)
+        // Subagentes Transient (abstracciones para inversión de dependencias)
         services.AddTransient<IScoutAgent, ScoutAgent>();
         services.AddTransient<IPlannerAgent, PlannerAgent>();
         services.AddTransient<ICoderAgent, CoderAgent>();
         services.AddTransient<IReviewerAgent, ReviewerAgent>();
-        services.AddTransient<ScoutAgent>();
-        services.AddTransient<PlannerAgent>();
-        services.AddTransient<CoderAgent>();
-        services.AddTransient<ReviewerAgent>();
 
         // Orquestador y Fábrica de Orquestación
         services.AddTransient<IOrchestratorFactory, OrchestratorFactory>();

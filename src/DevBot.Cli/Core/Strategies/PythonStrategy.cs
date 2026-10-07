@@ -33,15 +33,16 @@ public class PythonStrategy : IBuildAndTestStrategy
                     return SyntaxValidationResult.Failure($"Python syntax error: {errorSummary}");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fallback if python CLI is unavailable in the environment
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal running python syntax check: {ex.Message}");
             }
             finally
             {
                 if (File.Exists(tempFile))
                 {
-                    try { File.Delete(tempFile); } catch { }
+                    try { File.Delete(tempFile); }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal deleting temp python file: {ex.Message}"); }
                 }
             }
         }

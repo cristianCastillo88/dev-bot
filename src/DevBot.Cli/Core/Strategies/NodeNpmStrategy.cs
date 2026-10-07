@@ -31,15 +31,16 @@ public class NodeNpmStrategy : IBuildAndTestStrategy
                     return SyntaxValidationResult.Failure($"JavaScript syntax error: {errorSummary}");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fallback if node CLI is unavailable
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal running node syntax check: {ex.Message}");
             }
             finally
             {
                 if (File.Exists(tempFile))
                 {
-                    try { File.Delete(tempFile); } catch { }
+                    try { File.Delete(tempFile); }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal deleting temp node file: {ex.Message}"); }
                 }
             }
         }

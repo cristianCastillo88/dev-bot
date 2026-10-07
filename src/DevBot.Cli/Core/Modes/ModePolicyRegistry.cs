@@ -1,11 +1,22 @@
+using System.Text.RegularExpressions;
+
 namespace DevBot.Cli.Core.Modes;
 
 /// <summary>
 /// Registro centralizado y evaluador de políticas de ejecución para los distintos modos operativos de DevBot.
 /// Permite parsear modos manuales y auto-detectar el modo adecuado analizando la semántica del requerimiento.
 /// </summary>
-public static class ModePolicyRegistry
+public static partial class ModePolicyRegistry
 {
+    [GeneratedRegex(@"\b(?:bug|bugs|error|errores|exception|excepcion|excepción|fix|corregir|correccion|corrección|arreglar|reparar|falla|fallas|fallo|fallos|crash|cae|caida|caída|rompe|500|nullreference|stacktrace|issue|defect)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex BugPattern();
+
+    [GeneratedRegex(@"\b(?:test|tests|testing|prueba|pruebas|cobertura|coverage|assert|asserts|assertion|assertions|mock|mocks|unit test|test unitario)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex TestPattern();
+
+    [GeneratedRegex(@"\b(?:refactor|refactorizar|limpiar|cleanup|optimizar|rendimiento|extraer|deuda técnica|simplificar|desacoplar)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex RefactorPattern();
+
     /// <summary>
     /// Parsea una cadena de texto en su correspondiente valor de <see cref="AgentMode"/>.
     /// </summary>
@@ -38,47 +49,24 @@ public static class ModePolicyRegistry
         string text = taskDescription.ToLowerInvariant();
 
         // 1. Patrones de Bug / Fix
-        string[] bugKeywords = [
-            "bug", "bugs", "error", "errores", "exception", "excepcion", "excepción", 
-            "fix", "corregir", "correccion", "corrección", "arreglar", "reparar", 
-            "falla", "fallas", "fallo", "fallos", "crash", "cae", "caida", "caída", 
-            "rompe", "500", "nullreference", "stacktrace", "issue", "defect"
-        ];
-
-        foreach (var kw in bugKeywords)
+        var bugMatch = BugPattern().Match(text);
+        if (bugMatch.Success)
         {
-            if (System.Text.RegularExpressions.Regex.IsMatch(text, $@"\b{System.Text.RegularExpressions.Regex.Escape(kw)}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-            {
-                return (AgentMode.Bug, $"Detectado término de corrección: '{kw}'");
-            }
+            return (AgentMode.Bug, $"Detectado término de corrección: '{bugMatch.Value}'");
         }
 
         // 2. Patrones de Test / Pruebas
-        string[] testKeywords = [
-            "test", "tests", "testing", "prueba", "pruebas", "cobertura", "coverage", 
-            "assert", "asserts", "assertion", "assertions", "mock", "mocks", "unit test", "test unitario"
-        ];
-
-        foreach (var kw in testKeywords)
+        var testMatch = TestPattern().Match(text);
+        if (testMatch.Success)
         {
-            if (System.Text.RegularExpressions.Regex.IsMatch(text, $@"\b{System.Text.RegularExpressions.Regex.Escape(kw)}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-            {
-                return (AgentMode.Test, $"Detectado término de pruebas/QA: '{kw}'");
-            }
+            return (AgentMode.Test, $"Detectado término de pruebas/QA: '{testMatch.Value}'");
         }
 
         // 3. Patrones de Refactor / Limpieza
-        string[] refactorKeywords = [
-            "refactor", "refactorizar", "limpiar", "cleanup", "optimizar", "rendimiento", 
-            "extraer", "deuda técnica", "simplificar", "desacoplar"
-        ];
-
-        foreach (var kw in refactorKeywords)
+        var refactorMatch = RefactorPattern().Match(text);
+        if (refactorMatch.Success)
         {
-            if (System.Text.RegularExpressions.Regex.IsMatch(text, $@"\b{System.Text.RegularExpressions.Regex.Escape(kw)}\b"))
-            {
-                return (AgentMode.Refactor, $"Detectado término de refactorización: '{kw}'");
-            }
+            return (AgentMode.Refactor, $"Detectado término de refactorización: '{refactorMatch.Value}'");
         }
 
         return (AgentMode.Feature, "No se identificaron patrones de bug, test o refactor; se asume Feature.");

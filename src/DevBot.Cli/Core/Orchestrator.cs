@@ -84,7 +84,8 @@ public class Orchestrator : IOrchestrator
     public async Task<bool> RunAsync(string taskDescription, CancellationToken cancellationToken = default)
     {
         _context.Metrics.Start();
-        PrintStartupBanner(taskDescription);
+        ConsoleReportRenderer.PrintStartupBanner(_context, taskDescription);
+        _context.Logger.LogEvent("Orchestrator", "ModeConfig", $"Modo: {_context.ModePolicy.DisplayName}");
 
         if (!await InitializeGitWorkspaceAsync(taskDescription, cancellationToken))
         {
@@ -118,16 +119,6 @@ public class Orchestrator : IOrchestrator
         return true;
     }
 
-    private void PrintStartupBanner(string taskDescription)
-    {
-        AnsiConsole.Write(new Rule("[bold cyan]🚀 DevBot - Motor Agéntico de Desarrollo Autónomo[/]").RuleStyle("cyan"));
-        AnsiConsole.MarkupLine($"[grey]Directorio de trabajo:[/] [yellow]{_context.RepoRoot}[/]");
-        AnsiConsole.MarkupLine($"[grey]Modelo IA:[/] [cyan]{_context.ModelId}[/]");
-        AnsiConsole.MarkupLine($"[grey]Modo de operación:[/] [bold magenta]{_context.ModePolicy.DisplayName}[/]");
-        AnsiConsole.MarkupLine($"[grey]Requerimiento:[/] [white]{Markup.Escape(taskDescription)}[/]\n");
-        _context.Logger.LogEvent("Orchestrator", "ModeConfig", $"Modo: {_context.ModePolicy.DisplayName}");
-    }
-
     private async Task<bool> InitializeGitWorkspaceAsync(string taskDescription, CancellationToken cancellationToken)
     {
         bool isGit = await _gitTools.IsGitRepositoryAsync(cancellationToken);
@@ -151,7 +142,7 @@ public class Orchestrator : IOrchestrator
         AnsiConsole.MarkupLine($"[dim]{Markup.Escape(branchResult)}[/]\n");
 
         _gitTools.EnsureGitExclude(".agent/");
-        _context.SaveTask(taskDescription);
+        await _context.SaveTaskAsync(taskDescription, cancellationToken);
         AnsiConsole.MarkupLine($"[bold blue]📁 [[Orchestrator]][/] Requerimiento guardado en [yellow]{Markup.Escape(_context.TaskFilePath)}[/]");
         return true;
     }
@@ -248,7 +239,7 @@ public class Orchestrator : IOrchestrator
 
         if (targetFiles.Count == 0)
         {
-            string scoutReport = _context.ReadScoutReport();
+            string scoutReport = await _context.ReadScoutReportAsync(cancellationToken);
             targetFiles = ScoutPlanExtractor.ExtractTargetFiles(scoutReport).ToList();
         }
 
@@ -288,8 +279,9 @@ public class Orchestrator : IOrchestrator
         {
             var milestone = _context.Plan.Milestones[mIdx];
             _context.CurrentMilestone = milestone;
+            _context.MilestoneModifiedFiles.Clear();
 
-            PrintMilestoneHeader(milestone, totalMilestones);
+            ConsoleReportRenderer.PrintMilestoneHeader(milestone, totalMilestones);
 
             bool testsPassed = await ExecuteMilestoneAttemptsAsync(milestone, cancellationToken);
             if (!testsPassed)
@@ -316,17 +308,6 @@ public class Orchestrator : IOrchestrator
         }
 
         return true;
-    }
-
-    private static void PrintMilestoneHeader(PlanMilestone milestone, int totalMilestones)
-    {
-        AnsiConsole.MarkupLine($"\n[bold white on blue] 📍 HITO {milestone.Order} DE {totalMilestones}: {Markup.Escape(milestone.Title)} [/]");
-        AnsiConsole.MarkupLine($"[grey]Capa:[/] [magenta]{Markup.Escape(milestone.Scope)}[/] | [grey]Verificación:[/] [green]{Markup.Escape(milestone.VerificationCommand)}[/]");
-        if (milestone.TargetFiles.Count > 0)
-        {
-            AnsiConsole.MarkupLine($"[grey]Archivos objetivo:[/] {string.Join(", ", milestone.TargetFiles.Select(f => $"[yellow]{Markup.Escape(f)}[/]"))}");
-        }
-        AnsiConsole.MarkupLine($"[grey]Alcance:[/] [cyan]{Markup.Escape(milestone.Description)}[/]\n");
     }
 
     private async Task<bool> ExecuteMilestoneAttemptsAsync(PlanMilestone milestone, CancellationToken cancellationToken)
@@ -444,7 +425,7 @@ public class Orchestrator : IOrchestrator
         string newCommitHash = await _gitTools.GetLastCommitHashAsync(cancellationToken);
         milestone.CheckpointCommitHash = newCommitHash;
         AnsiConsole.MarkupLine($"[bold green]💾 Checkpoint guardado:[/] [cyan]{newCommitHash}[/] [dim]({checkpointMsg})[/]");
-        _context.SavePlan(_context.Plan!);
+        await _context.SavePlanAsync(_context.Plan!, cancellationToken);
         return newCommitHash;
     }
 
@@ -508,7 +489,7 @@ public class Orchestrator : IOrchestrator
         _context.Logger.SaveJson();
         RunReportGenerator.GenerateReport(_context, diffSummary);
 
-        PrintSuccessSummary(diffSummary);
+        ConsoleReportRenderer.PrintSuccessSummary(_context, diffSummary);
     }
 
     private async Task AbortAndCleanupAsync(string reason, CancellationToken cancellationToken = default)
@@ -547,124 +528,6 @@ public class Orchestrator : IOrchestrator
             }
         }
 
-        PrintFailureSummary();
-    }
-
-    private void PrintSuccessSummary(string diffSummary)
-    {
-        var grid = new Grid();
-        grid.AddColumn();
-        grid.AddColumn();
-
-        grid.AddRow("[bold green]Estado:[/]", "[green]COMPLETADO CON ÉXITO[/]");
-        grid.AddRow("[bold cyan]Rama Local:[/]", $"[cyan]{Markup.Escape(_context.TargetBranch)}[/]");
-        grid.AddRow("[bold cyan]Rama Remota Publicada:[/]", $"[bold cyan]origin/{Markup.Escape(_context.TargetBranch)}[/]");
-        grid.AddRow("[bold yellow]Commit Hash:[/]", $"[yellow]{Markup.Escape(_context.Metrics.CommitHash ?? "")}[/]");
-        if (!string.IsNullOrEmpty(_context.PullRequestUrl))
-        {
-            grid.AddRow("[bold green]Pull Request:[/]", $"[link={_context.PullRequestUrl}][bold underline green]{Markup.Escape(_context.PullRequestUrl)}[/][/]");
-        }
-        grid.AddRow("[bold]Tiempo Transcurrido:[/]", $"{_context.Metrics.Elapsed.TotalSeconds:F1}s");
-        grid.AddRow("[bold]Reintentos Coder/Reviewer:[/]", $"{_context.Metrics.CoderRetries}");
-        grid.AddRow("[bold]Tokens Consumidos (estimados):[/]", $"{_context.Metrics.TokensConsumed:N0}");
-
-        var panel = new Panel(grid)
-        {
-            Header = new PanelHeader("[bold green] ✔ RESUMEN DE PULL REQUEST [/]"),
-            Border = BoxBorder.Double,
-            Padding = new Padding(1, 1, 1, 1)
-        };
-
-        AnsiConsole.WriteLine();
-        AnsiConsole.Write(panel);
-
-        if (_context.Metrics.Phases.Count > 0)
-        {
-            var phaseTable = new Table().Border(TableBorder.Rounded);
-            phaseTable.AddColumn(new TableColumn("[bold cyan]Fase / Subagente[/]"));
-            phaseTable.AddColumn(new TableColumn("[bold]Duración[/]").Centered());
-            phaseTable.AddColumn(new TableColumn("[bold]Tokens[/]").Centered());
-            phaseTable.AddColumn(new TableColumn("[bold]Herramientas Invocadas[/]"));
-            phaseTable.AddColumn(new TableColumn("[bold]Estado[/]").Centered());
-
-            foreach (var p in _context.Metrics.Phases)
-            {
-                string tools = p.ToolCalls.Count > 0
-                    ? string.Join(", ", p.ToolCalls.Select(tc => $"{tc.Key} ({tc.Value})"))
-                    : "-";
-                string status = p.Success ? "[green]✔ OK[/]" : "[yellow]⚠ Alerta[/]";
-                phaseTable.AddRow(p.PhaseName, $"{p.Duration.TotalSeconds:F1}s", $"{p.TotalTokens:N0}", tools, status);
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.Write(phaseTable);
-        }
-
-        if (!string.IsNullOrEmpty(_context.PullRequestUrl))
-        {
-            AnsiConsole.MarkupLine($"\n[bold yellow]👉 Pull Request listo para auditoría humana:[/] [link={_context.PullRequestUrl}][bold underline green]{Markup.Escape(_context.PullRequestUrl)}[/][/]");
-            AnsiConsole.MarkupLine("[dim]   (Por política de seguridad, el Pull Request requiere revisión y aprobación manual. Sin automerge.)[/]\n");
-        }
-
-        AnsiConsole.MarkupLine($"[bold cyan]📄 Informe Ejecutivo Markdown:[/] [yellow]{Markup.Escape(_context.LatestReportPath)}[/]");
-        AnsiConsole.MarkupLine($"[bold grey]📜 Registro de Auditoría (Log):[/] [dim]{Markup.Escape(_context.Logger.LatestLogPath)}[/]\n");
-
-        if (!string.IsNullOrWhiteSpace(diffSummary))
-        {
-            var diffPanel = new Panel(new Text(diffSummary))
-            {
-                Header = new PanelHeader("[bold cyan] Archivos Modificados (git diff --stat) [/]"),
-                Border = BoxBorder.Rounded
-            };
-            AnsiConsole.Write(diffPanel);
-        }
-    }
-
-    private void PrintFailureSummary()
-    {
-        var grid = new Grid();
-        grid.AddColumn();
-        grid.AddColumn();
-
-        grid.AddRow("[bold red]Estado:[/]", "[red]FALLIDO / REVERTIDO[/]");
-        grid.AddRow("[bold]Motivo:[/]", $"[red]{Markup.Escape(_context.Metrics.ErrorMessage ?? "")}[/]");
-        grid.AddRow("[bold]Tiempo Transcurrido:[/]", $"{_context.Metrics.Elapsed.TotalSeconds:F1}s");
-        grid.AddRow("[bold]Reintentos Realizados:[/]", $"{_context.Metrics.CoderRetries}");
-        grid.AddRow("[bold]Tokens Consumidos:[/]", $"{_context.Metrics.TokensConsumed:N0}");
-
-        var panel = new Panel(grid)
-        {
-            Header = new PanelHeader("[bold red] ❌ RESUMEN DE EJECUCIÓN (ROLLBACK) [/]"),
-            Border = BoxBorder.Heavy,
-            Padding = new Padding(1, 1, 1, 1)
-        };
-
-        AnsiConsole.WriteLine();
-        AnsiConsole.Write(panel);
-
-        if (_context.Metrics.Phases.Count > 0)
-        {
-            var phaseTable = new Table().Border(TableBorder.Rounded);
-            phaseTable.AddColumn(new TableColumn("[bold cyan]Fase / Subagente[/]"));
-            phaseTable.AddColumn(new TableColumn("[bold]Duración[/]").Centered());
-            phaseTable.AddColumn(new TableColumn("[bold]Tokens[/]").Centered());
-            phaseTable.AddColumn(new TableColumn("[bold]Herramientas Invocadas[/]"));
-            phaseTable.AddColumn(new TableColumn("[bold]Estado[/]").Centered());
-
-            foreach (var p in _context.Metrics.Phases)
-            {
-                string tools = p.ToolCalls.Count > 0
-                    ? string.Join(", ", p.ToolCalls.Select(tc => $"{tc.Key} ({tc.Value})"))
-                    : "-";
-                string status = p.Success ? "[green]✔ OK[/]" : "[red]❌ Error[/]";
-                phaseTable.AddRow(p.PhaseName, $"{p.Duration.TotalSeconds:F1}s", $"{p.TotalTokens:N0}", tools, status);
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.Write(phaseTable);
-        }
-
-        AnsiConsole.MarkupLine($"\n[bold cyan]📄 Informe Ejecutivo del Fallo:[/] [yellow]{Markup.Escape(_context.LatestReportPath)}[/]");
-        AnsiConsole.MarkupLine($"[bold grey]📜 Registro de Auditoría (Log):[/] [dim]{Markup.Escape(_context.Logger.LatestLogPath)}[/]\n");
+        ConsoleReportRenderer.PrintFailureSummary(_context);
     }
 }

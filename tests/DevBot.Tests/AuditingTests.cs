@@ -97,6 +97,55 @@ public class AuditingTests : IDisposable
     }
 
     [Fact]
+    public void SecretScanner_DetectsAzureStorageAccountKey()
+    {
+        string content = "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=dGVzdEFjY291bnRLZXkxMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTA=;EndpointSuffix=core.windows.net";
+        var findings = _scanner.ScanContent("appsettings.json", content);
+
+        Assert.Single(findings);
+        Assert.Equal("SEC008", findings[0].RuleId);
+    }
+
+    [Fact]
+    public void SecretScanner_DetectsSlackToken()
+    {
+        string content = "SLACK_BOT_TOKEN=\"xoxb-123456789012-345678901234-abcdefghijklmnopqrstuvwx\"";
+        var findings = _scanner.ScanContent(".env", content);
+
+        Assert.Contains(findings, f => f.RuleId == "SEC009");
+    }
+
+    [Fact]
+    public void SecretScanner_DetectsStripeSecretKey()
+    {
+        string content = "const stripe = require('stripe')('sk_live_51Abcdefghijklmnopqrstuvwx123456');";
+        var findings = _scanner.ScanContent("payment.js", content);
+
+        Assert.Single(findings);
+        Assert.Equal("SEC010", findings[0].RuleId);
+    }
+
+    [Fact]
+    public void SecretScanner_DetectsNpmAccessToken()
+    {
+        string content = "//registry.npmjs.org/:_authToken=npm_1234567890abcdefghijklmnopqrstuvwxyz12";
+        var findings = _scanner.ScanContent(".npmrc", content);
+
+        Assert.Single(findings);
+        Assert.Equal("SEC011", findings[0].RuleId);
+    }
+
+    [Fact]
+    public void SecretScanner_DetectsEnvironmentSecretToken()
+    {
+        string content = "API_SECRET=\"AbCdEf1234567890_MySecretTokenValue\"";
+        var findings = _scanner.ScanContent(".env.local", content);
+
+        Assert.Single(findings);
+        Assert.Equal("SEC012", findings[0].RuleId);
+    }
+
+    [Fact]
     public void SecretScanner_DoesNotFlagNormalCode()
     {
         string content = """

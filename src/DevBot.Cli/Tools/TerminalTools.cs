@@ -38,10 +38,42 @@ public class TerminalTools
             return $"ERROR: Working directory '{workDir}' does not exist.";
         }
 
+        try
+        {
+            InputSanitizer.ValidateCommand(command);
+        }
+        catch (Exception ex)
+        {
+            _context?.Logger.LogEvent("TerminalTools", "Warning", $"Command validation failed: {ex.Message}");
+            return $"ERROR: {ex.Message}";
+        }
+
         string fullCommandLine = string.IsNullOrWhiteSpace(arguments) ? command : $"{command} {arguments}";
         bool containsShellOperator = fullCommandLine.Contains("&&") || fullCommandLine.Contains("||") ||
                                      fullCommandLine.Contains("|") || fullCommandLine.Contains(">") ||
-                                     fullCommandLine.Contains("<");
+                                     fullCommandLine.Contains("<") || fullCommandLine.Contains(";");
+
+        if (containsShellOperator)
+        {
+            var operators = new[] { "&&", "||", "|", ";", "&" };
+            var subParts = fullCommandLine.Split(operators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in subParts)
+            {
+                var firstToken = part.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (!string.IsNullOrEmpty(firstToken))
+                {
+                    try
+                    {
+                        InputSanitizer.ValidateCommand(firstToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _context?.Logger.LogEvent("TerminalTools", "Warning", $"Chained command validation failed: {ex.Message}");
+                        return $"ERROR: {ex.Message}";
+                    }
+                }
+            }
+        }
 
         var psi = new ProcessStartInfo
         {
@@ -109,7 +141,10 @@ public class TerminalTools
                 // Close standard input immediately so process does not hang waiting for interactive input
                 process.StandardInput.Close();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal closing StandardInput: {ex.Message}");
+            }
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
@@ -126,7 +161,10 @@ public class TerminalTools
                 {
                     process.Kill(entireProcessTree: true);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal killing process tree: {ex.Message}");
+                }
 
                 _context?.RecordCommandExecution(fullCommandLine, -1);
                 _context?.Logger.LogEvent("TerminalTools", "Error", $"RunCommand '{command} {arguments}' timed out after {timeoutSeconds}s.");
@@ -173,16 +211,7 @@ public class TerminalTools
                 }
             }
 
-            string rawResult = result.ToString();
-            var clean = new StringBuilder(rawResult.Length);
-            foreach (char c in rawResult)
-            {
-                if (c == '\r' || c == '\n' || c == '\t' || (!char.IsControl(c) && c != '\0'))
-                {
-                    clean.Append(c);
-                }
-            }
-            return clean.ToString();
+            return OutputSanitizer.Sanitize(result.ToString());
         }
         catch (Exception ex)
         {

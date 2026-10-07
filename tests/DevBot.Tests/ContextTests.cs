@@ -22,24 +22,24 @@ public class ContextTests : IDisposable
     }
 
     [Fact]
-    public void AgentContext_ArtifactPersistence_WorksCleanlyOnDisk()
+    public async Task AgentContext_ArtifactPersistence_WorksCleanlyOnDisk()
     {
         var context = new AgentContext(_testDir, "test-api-key", "gemini-2.5-flash");
 
         // 1. Task persistence
-        context.SaveTask("Implement user registration");
+        await context.SaveTaskAsync("Implement user registration");
         Assert.True(File.Exists(context.TaskFilePath));
-        Assert.Equal("Implement user registration", context.ReadTask());
+        Assert.Equal("Implement user registration", await context.ReadTaskAsync());
 
         // 2. Scout report persistence
-        context.SaveScoutReport("# Scout Report\nTarget: UserController.cs");
+        await context.SaveScoutReportAsync("# Scout Report\nTarget: UserController.cs");
         Assert.True(File.Exists(context.ScoutReportPath));
-        Assert.Contains("UserController.cs", context.ReadScoutReport());
+        Assert.Contains("UserController.cs", await context.ReadScoutReportAsync());
 
         // 3. Review results persistence
-        context.SaveReviewResults("ALL_PASS");
+        await context.SaveReviewResultsAsync("ALL_PASS");
         Assert.True(File.Exists(context.ReviewResultsPath));
-        Assert.Equal("ALL_PASS", context.ReadReviewResults());
+        Assert.Equal("ALL_PASS", await context.ReadReviewResultsAsync());
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class ContextTests : IDisposable
     }
 
     [Fact]
-    public void RunReportGenerator_GeneratesMarkdownReportWithMetricsAndLogs()
+    public async Task RunReportGenerator_GeneratesMarkdownReportWithMetricsAndLogs()
     {
         var context = new AgentContext(_testDir, "test-api-key")
         {
@@ -133,8 +133,8 @@ public class ContextTests : IDisposable
         };
 
         context.ModifiedFiles.Add("Controllers/HealthController.cs");
-        context.SaveScoutReport("Architectural analysis shows Web API pattern.");
-        context.SaveReviewResults("ALL_PASS - All 5 tests passed cleanly.");
+        await context.SaveScoutReportAsync("Architectural analysis shows Web API pattern.");
+        await context.SaveReviewResultsAsync("ALL_PASS - All 5 tests passed cleanly.");
 
         context.Metrics.Start();
         context.Metrics.StartPhase("Scout Agent");
@@ -161,5 +161,87 @@ public class ContextTests : IDisposable
         Assert.Contains("ALL_PASS", report);
 
         Assert.True(File.Exists(context.LatestReportPath));
+    }
+
+    [Fact]
+    public void AgentConfiguration_DefaultsAndImmutability_WorkCorrectly()
+    {
+        var config = new AgentConfiguration("valid-key");
+        Assert.Equal("valid-key", config.ApiKey);
+        Assert.Equal("gemini-3.5-flash-lite", config.ModelId);
+        Assert.Equal(3, config.MaxRetries);
+        Assert.False(config.AutoApprove);
+
+        var modified = config with { AutoApprove = true, MaxRetries = 5, ModelId = "gemini-1.5-pro" };
+        Assert.True(modified.AutoApprove);
+        Assert.Equal(5, modified.MaxRetries);
+        Assert.Equal("gemini-1.5-pro", modified.ModelId);
+        Assert.Equal("valid-key", modified.ApiKey);
+
+        // Original is immutable
+        Assert.False(config.AutoApprove);
+        Assert.Equal(3, config.MaxRetries);
+
+        // Throws on empty API key
+        Assert.Throws<ArgumentException>(() => new AgentConfiguration(""));
+        Assert.Throws<ArgumentException>(() => new AgentConfiguration("   "));
+    }
+
+    [Fact]
+    public void AgentWorkspace_PathsAndDirectoryCreation_WorkCorrectly()
+    {
+        var workspace = new AgentWorkspace(_testDir);
+        Assert.Equal(_testDir, workspace.RepoRoot);
+        Assert.Equal(Path.Combine(_testDir, ".agent"), workspace.AgentDir);
+        Assert.Equal(Path.Combine(_testDir, ".agent", "task.md"), workspace.TaskFilePath);
+        Assert.Equal(Path.Combine(_testDir, ".agent", "scout_report.md"), workspace.ScoutReportPath);
+        Assert.Equal(Path.Combine(_testDir, ".agent", "review_results.md"), workspace.ReviewResultsPath);
+        Assert.Equal(Path.Combine(_testDir, ".agent", "plan.json"), workspace.PlanJsonPath);
+        Assert.Equal(Path.Combine(_testDir, ".agent", "plan.md"), workspace.PlanMarkdownPath);
+        Assert.Equal(Path.Combine(_testDir, ".agent", "latest_run_report.md"), workspace.LatestReportPath);
+
+        Assert.True(Directory.Exists(workspace.AgentDir));
+    }
+
+    [Fact]
+    public void AgentContext_ComposesWorkspaceAndConfiguration_Correctly()
+    {
+        var workspace = new AgentWorkspace(_testDir);
+        var config = new AgentConfiguration("my-key", "gemini-pro", 4, true);
+        var context = new AgentContext(workspace, config);
+
+        Assert.Same(workspace, context.Workspace);
+        Assert.Same(config, context.Config);
+        Assert.Equal("my-key", context.ApiKey);
+        Assert.Equal("gemini-pro", context.ModelId);
+        Assert.Equal(4, context.MaxRetries);
+        Assert.True(context.AutoApprove);
+        Assert.Equal(_testDir, context.RepoRoot);
+    }
+
+    [Fact]
+    public void AgentContext_MilestoneModifiedFiles_CanBeClearedIndependentlyOfGlobalModifiedFiles()
+    {
+        var context = new AgentContext(_testDir, "test-key");
+
+        // Milestone 1
+        context.MilestoneModifiedFiles.Add("ServiceA.cs");
+        context.ModifiedFiles.Add("ServiceA.cs");
+
+        Assert.Single(context.MilestoneModifiedFiles);
+        Assert.Single(context.ModifiedFiles);
+
+        // Milestone boundary reset
+        context.MilestoneModifiedFiles.Clear();
+        Assert.Empty(context.MilestoneModifiedFiles);
+        Assert.Single(context.ModifiedFiles);
+
+        // Milestone 2
+        context.MilestoneModifiedFiles.Add("ServiceB.cs");
+        context.ModifiedFiles.Add("ServiceB.cs");
+
+        Assert.Single(context.MilestoneModifiedFiles);
+        Assert.Contains("ServiceB.cs", context.MilestoneModifiedFiles);
+        Assert.Equal(2, context.ModifiedFiles.Count);
     }
 }

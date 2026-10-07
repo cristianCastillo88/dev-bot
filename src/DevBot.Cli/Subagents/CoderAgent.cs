@@ -27,7 +27,7 @@ public class CoderAgent : SubagentBase, ICoderAgent
         var history = new ChatHistory();
         history.AddSystemMessage(systemPrompt);
 
-        string task = context.ReadTask();
+        string task = await context.ReadTaskAsync(cancellationToken);
         string idiomaticGuidelines = context.Strategy.GetIdiomaticPromptGuidelines();
         string guidanceBlock = !string.IsNullOrWhiteSpace(context.AdditionalUserGuidance)
             ? $"\nADDITIONAL DEVELOPER CLARIFICATIONS / DIRECTIVES:\n{context.AdditionalUserGuidance}\n"
@@ -55,7 +55,7 @@ public class CoderAgent : SubagentBase, ICoderAgent
 
         if (iteration == 1)
         {
-            string scoutReport = context.ReadScoutReport();
+            string scoutReport = await context.ReadScoutReportAsync(cancellationToken);
             userPrompt = $"""
                 ASSIGNED TASK:
                 {task}
@@ -81,7 +81,7 @@ public class CoderAgent : SubagentBase, ICoderAgent
         }
         else
         {
-            string reviewResults = context.ReadReviewResults();
+            string reviewResults = await context.ReadReviewResultsAsync(cancellationToken);
             string modifiedFilesBlock = context.ModifiedFiles.Count > 0
                 ? $"\nFILES ALREADY MODIFIED IN PREVIOUS ITERATIONS:\n- {string.Join("\n- ", context.ModifiedFiles)}\n"
                 : string.Empty;

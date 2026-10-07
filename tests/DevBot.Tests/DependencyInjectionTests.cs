@@ -4,6 +4,7 @@ using DevBot.Cli.Core.Configuration;
 using DevBot.Cli.Core.DependencyInjection;
 using DevBot.Cli.Core.Memory;
 using DevBot.Cli.Core.Strategies;
+using DevBot.Cli.Core.Validation;
 using DevBot.Cli.Subagents;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -24,16 +25,24 @@ public class DependencyInjectionTests
         Assert.NotNull(provider.GetService<IRepositoryMemoryService>());
         Assert.NotNull(provider.GetService<IPreCommitAuditor>());
         Assert.NotNull(provider.GetService<ICredentialStorageService>());
+        Assert.NotNull(provider.GetService<ISyntaxValidator>());
 
-        Assert.NotNull(provider.GetService<ScoutAgent>());
-        Assert.NotNull(provider.GetService<PlannerAgent>());
-        Assert.NotNull(provider.GetService<CoderAgent>());
-        Assert.NotNull(provider.GetService<ReviewerAgent>());
+        var scout = provider.GetService<IScoutAgent>();
+        Assert.NotNull(scout);
+        Assert.IsType<ScoutAgent>(scout);
 
-        Assert.NotNull(provider.GetService<IScoutAgent>());
-        Assert.NotNull(provider.GetService<IPlannerAgent>());
-        Assert.NotNull(provider.GetService<ICoderAgent>());
-        Assert.NotNull(provider.GetService<IReviewerAgent>());
+        var planner = provider.GetService<IPlannerAgent>();
+        Assert.NotNull(planner);
+        Assert.IsType<PlannerAgent>(planner);
+
+        var coder = provider.GetService<ICoderAgent>();
+        Assert.NotNull(coder);
+        Assert.IsType<CoderAgent>(coder);
+
+        var reviewer = provider.GetService<IReviewerAgent>();
+        Assert.NotNull(reviewer);
+        Assert.IsType<ReviewerAgent>(reviewer);
+
         Assert.NotNull(provider.GetService<IOrchestratorFactory>());
     }
 

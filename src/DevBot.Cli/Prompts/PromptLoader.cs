@@ -17,9 +17,9 @@ public static class PromptLoader
             string path3 = Path.Combine(currentDir, "src", "DevBot.Cli", "Prompts", promptFileName);
             if (File.Exists(path3)) return File.ReadAllText(path3);
         }
-        catch
+        catch (Exception ex)
         {
-            // Fall through to fallback
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal loading prompt '{promptFileName}': {ex.Message}");
         }
 
         return fallbackContent;

@@ -52,16 +52,49 @@ public class ConfigurationTests : IDisposable
     }
 
     [Fact]
-    public void CredentialStorageService_SavesAndLoadsApiKey()
+    public void CredentialStorageService_SavesAndLoadsApiKey_EncryptedAtRest()
     {
         var service = new CredentialStorageService(_testDir);
+        string apiKeyFile = Path.Combine(_testDir, ".devbot", "api_key");
 
         Assert.Null(service.LoadApiKey());
 
         string sampleKey = "AIzaSyTestKey123456789";
         service.SaveApiKey(sampleKey);
 
+        Assert.True(File.Exists(apiKeyFile));
+        string onDiskContent = File.ReadAllText(apiKeyFile).Trim();
+
+        // Must NOT be stored in plain text
+        Assert.NotEqual(sampleKey, onDiskContent);
+
+        // LoadApiKey cleanly decrypts it
         string? loaded = service.LoadApiKey();
         Assert.Equal(sampleKey, loaded);
+    }
+
+    [Fact]
+    public void CredentialStorageService_MigratesPlaintextKey_Transparently()
+    {
+        string devbotDir = Path.Combine(_testDir, ".devbot");
+        Directory.CreateDirectory(devbotDir);
+        string apiKeyFile = Path.Combine(devbotDir, "api_key");
+
+        string plaintextKey = "AIzaSyLegacyPlaintextKey987654";
+        File.WriteAllText(apiKeyFile, plaintextKey);
+
+        var service = new CredentialStorageService(_testDir);
+
+        // First read: reads legacy plaintext and auto-encrypts
+        string? loaded = service.LoadApiKey();
+        Assert.Equal(plaintextKey, loaded);
+
+        // File is now protected
+        string migratedDiskContent = File.ReadAllText(apiKeyFile).Trim();
+        Assert.NotEqual(plaintextKey, migratedDiskContent);
+
+        // Subsequent read: decrypts protected file cleanly
+        string? loadedAgain = service.LoadApiKey();
+        Assert.Equal(plaintextKey, loadedAgain);
     }
 }

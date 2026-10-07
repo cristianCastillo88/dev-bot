@@ -30,7 +30,7 @@ public class ReviewerAgent : SubagentBase, IReviewerAgent
         var history = new ChatHistory();
         history.AddSystemMessage(systemPrompt);
 
-        string task = context.ReadTask();
+        string task = await context.ReadTaskAsync(cancellationToken);
         string milestoneVerification = context.CurrentMilestone != null
             ? $"""
 
@@ -88,7 +88,7 @@ public class ReviewerAgent : SubagentBase, IReviewerAgent
         bool allPass = hasAllPassToken && !verdictFailed && !commandExitCodeFailed;
 
         // 5. Persist review results
-        context.SaveReviewResults(reviewResult);
+        await context.SaveReviewResultsAsync(reviewResult, cancellationToken);
 
         if (allPass)
         {

@@ -59,8 +59,9 @@ public class PlanDefinition
                 PropertyNameCaseInsensitive = true
             });
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal deserializing plan JSON: {ex.Message}");
             return null;
         }
     }

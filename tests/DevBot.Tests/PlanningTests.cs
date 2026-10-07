@@ -111,7 +111,7 @@ public class PlanningTests : IDisposable
     }
 
     [Fact]
-    public void AgentContext_SaveAndReadPlan_PersistsToDisk()
+    public async Task AgentContext_SaveAndReadPlan_PersistsToDisk()
     {
         var context = new AgentContext(_testDir, "test_api_key");
         var plan = new PlanDefinition
@@ -133,12 +133,12 @@ public class PlanningTests : IDisposable
             }
         };
 
-        context.SavePlan(plan);
+        await context.SavePlanAsync(plan);
 
         Assert.True(File.Exists(context.PlanJsonPath));
         Assert.True(File.Exists(context.PlanMarkdownPath));
 
-        var loaded = context.ReadPlan();
+        var loaded = await context.ReadPlanAsync();
         Assert.NotNull(loaded);
         Assert.Equal("Tarea con checkpoints", loaded.TaskDescription);
         Assert.Single(loaded.Milestones);

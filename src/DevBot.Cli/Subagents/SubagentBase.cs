@@ -196,9 +196,9 @@ public abstract class SubagentBase : ISubagent
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently continue if metadata structure differs
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal extracting model metadata: {ex.Message}");
         }
     }
 
