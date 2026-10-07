@@ -187,6 +187,58 @@ public class MemoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateRepoMapAsync_WithGitRepository_DiscoversTrackedFiles()
+    {
+        // Setup git repo in a subfolder of _testDir
+        string gitRepoDir = Path.Combine(_testDir, "git_repo");
+        Directory.CreateDirectory(gitRepoDir);
+        string srcDir = Path.Combine(gitRepoDir, "src", "Controllers");
+        Directory.CreateDirectory(srcDir);
+        await File.WriteAllTextAsync(Path.Combine(srcDir, "Program.cs"), "// entrypoint");
+        await File.WriteAllTextAsync(Path.Combine(srcDir, "ApiController.cs"), "// api");
+
+        try
+        {
+            var initProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "init",
+                WorkingDirectory = gitRepoDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            await initProcess!.WaitForExitAsync();
+
+            var addProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "add .",
+                WorkingDirectory = gitRepoDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            await addProcess!.WaitForExitAsync();
+        }
+        catch
+        {
+            // If git is not installed in the test environment, skip testing the git path specifically
+            return;
+        }
+
+        var stackInfo = new ProjectStackInfo(ProjectStackType.DotNet, "C#", "dotnet", null, Array.Empty<string>(), Array.Empty<string>());
+        var map = await _memoryService.GenerateRepoMapAsync(gitRepoDir, stackInfo, "git-commit-1");
+
+        Assert.NotNull(map);
+        Assert.Equal("git-commit-1", map.LastCommitHash);
+        Assert.NotEmpty(map.Entrypoints);
+        Assert.Contains(map.Entrypoints, ep => ep.EndsWith("Program.cs"));
+    }
+
+    [Fact]
     public void AgentContext_HoldsLocalRulesAndRepoMap()
     {
         var context = new AgentContext("fake_key", "task for context", _testDir);

@@ -49,29 +49,33 @@ public class FileTools : FileToolsBase
         => _readOps.ListFiles(directoryPath, searchPattern, recursive);
 
     [KernelFunction, Description("Searches code files for a given text or pattern, returning matching files and snippets with line numbers.")]
-    public string SearchCode(
+    public Task<string> SearchCode(
         [Description("Search query or text snippet")] string query,
-        [Description("Semicolon-separated file patterns to include, e.g. '*.cs;*.json;*.md'")] string fileExtensions = "*.cs;*.json;*.md;*.txt;*.csproj;*.js;*.ts;*.html;*.css")
-        => _readOps.SearchCode(query, fileExtensions);
+        [Description("Semicolon-separated file patterns to include, e.g. '*.cs;*.json;*.md'")] string fileExtensions = "*.cs;*.json;*.md;*.txt;*.csproj;*.js;*.ts;*.html;*.css",
+        CancellationToken cancellationToken = default)
+        => _readOps.SearchCode(query, fileExtensions, cancellationToken);
 
     [KernelFunction, Description("Writes full content to a file. Overwrites if existing, creates directories if missing.")]
-    public string WriteFile(
+    public Task<string> WriteFile(
         [Description("Relative path to the file to write")] string filePath,
-        [Description("Complete content of the file")] string content)
-        => _writeOps.WriteFile(filePath, content);
+        [Description("Complete content of the file")] string content,
+        CancellationToken cancellationToken = default)
+        => _writeOps.WriteFile(filePath, content, cancellationToken);
 
     [KernelFunction, Description("Applies a surgical code diff by replacing a unique snippet of code with replacement code in the target file.")]
-    public string ApplyDiff(
+    public Task<string> ApplyDiff(
         [Description("Relative path to the file to modify")] string filePath,
         [Description("The exact original snippet of code to replace (must match exactly one location)")] string originalSnippet,
-        [Description("The new replacement code snippet")] string replacementSnippet)
-        => _writeOps.ApplyDiff(filePath, originalSnippet, replacementSnippet);
+        [Description("The new replacement code snippet")] string replacementSnippet,
+        CancellationToken cancellationToken = default)
+        => _writeOps.ApplyDiff(filePath, originalSnippet, replacementSnippet, cancellationToken);
 
     [KernelFunction, Description("Applies multiple non-contiguous surgical code diffs to a single file atomically. If any snippet fails to match or introduces syntax errors, no changes are applied.")]
-    public string ApplyMultiDiff(
+    public Task<string> ApplyMultiDiff(
         [Description("Relative path to the file to modify")] string filePath,
-        [Description("JSON array of diff objects containing 'originalSnippet' and 'replacementSnippet'. Example: [{\"originalSnippet\": \"...\", \"replacementSnippet\": \"...\"}]")] string diffsJson)
-        => _writeOps.ApplyMultiDiff(filePath, diffsJson);
+        [Description("JSON array of diff objects containing 'originalSnippet' and 'replacementSnippet'. Example: [{\"originalSnippet\": \"...\", \"replacementSnippet\": \"...\"}]")] string diffsJson,
+        CancellationToken cancellationToken = default)
+        => _writeOps.ApplyMultiDiff(filePath, diffsJson, cancellationToken);
 
     public static KernelPlugin CreateScoutPlugin(string repoRoot, AgentContext? context = null)
         => ToolPluginFactory.CreateScoutPlugin(repoRoot, context);

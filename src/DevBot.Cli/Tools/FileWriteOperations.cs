@@ -27,9 +27,10 @@ public class FileWriteOperations : FileToolsBase
     }
 
     [KernelFunction, Description("Writes full content to a file. Overwrites if existing, creates directories if missing.")]
-    public string WriteFile(
+    public async Task<string> WriteFile(
         [Description("Relative path to the file to write")] string filePath,
-        [Description("Complete content of the file")] string content)
+        [Description("Complete content of the file")] string content,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -44,7 +45,7 @@ public class FileWriteOperations : FileToolsBase
                 return scopeCheck.ErrorMessage!;
             }
 
-            var syntaxCheck = ValidatePreFlightSyntax(filePath, content);
+            var syntaxCheck = await ValidatePreFlightSyntaxAsync(filePath, content, cancellationToken);
             if (!syntaxCheck.IsValid)
             {
                 _context?.Logger.LogEvent("FileTools", "Warning", $"WriteFile pre-flight syntax check failed on '{filePath}': {syntaxCheck.ErrorMessage}");
@@ -58,7 +59,7 @@ public class FileWriteOperations : FileToolsBase
                 Directory.CreateDirectory(dir);
             }
 
-            File.WriteAllText(fullPath, content, Encoding.UTF8);
+            await File.WriteAllTextAsync(fullPath, content, Encoding.UTF8, cancellationToken);
             string relPath = GetRelativePath(fullPath);
             _context?.ModifiedFiles.Add(relPath);
             _context?.MilestoneModifiedFiles.Add(relPath);
@@ -73,10 +74,11 @@ public class FileWriteOperations : FileToolsBase
     }
 
     [KernelFunction, Description("Applies a surgical code diff by replacing a unique snippet of code with replacement code in the target file.")]
-    public string ApplyDiff(
+    public async Task<string> ApplyDiff(
         [Description("Relative path to the file to modify")] string filePath,
         [Description("The exact original snippet of code to replace (must match exactly one location)")] string originalSnippet,
-        [Description("The new replacement code snippet")] string replacementSnippet)
+        [Description("The new replacement code snippet")] string replacementSnippet,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -98,7 +100,7 @@ public class FileWriteOperations : FileToolsBase
                 return $"ERROR: File '{filePath}' does not exist.";
             }
 
-            string content = File.ReadAllText(fullPath);
+            string content = await File.ReadAllTextAsync(fullPath, cancellationToken);
             bool hasCrLf = content.Contains("\r\n");
             string normalizedContent = content.Replace("\r\n", "\n");
 
@@ -115,14 +117,14 @@ public class FileWriteOperations : FileToolsBase
                 newContent = newContent.Replace("\r\n", "\n").Replace("\n", "\r\n");
             }
 
-            var syntaxCheck = ValidatePreFlightSyntax(filePath, newContent);
+            var syntaxCheck = await ValidatePreFlightSyntaxAsync(filePath, newContent, cancellationToken);
             if (!syntaxCheck.IsValid)
             {
                 _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyDiff pre-flight syntax check failed on '{filePath}': {syntaxCheck.ErrorMessage}");
                 return $"PRE-FLIGHT SYNTAX ERROR: The proposed diff would introduce syntax errors in '{filePath}'. Changes were NOT saved. Details: {syntaxCheck.ErrorMessage}. Please fix your replacement snippet.";
             }
 
-            File.WriteAllText(fullPath, newContent, Encoding.UTF8);
+            await File.WriteAllTextAsync(fullPath, newContent, Encoding.UTF8, cancellationToken);
             string relDiffPath = GetRelativePath(fullPath);
             _context?.ModifiedFiles.Add(relDiffPath);
             _context?.MilestoneModifiedFiles.Add(relDiffPath);
@@ -137,9 +139,10 @@ public class FileWriteOperations : FileToolsBase
     }
 
     [KernelFunction, Description("Applies multiple non-contiguous surgical code diffs to a single file atomically. If any snippet fails to match or introduces syntax errors, no changes are applied.")]
-    public string ApplyMultiDiff(
+    public async Task<string> ApplyMultiDiff(
         [Description("Relative path to the file to modify")] string filePath,
-        [Description("JSON array of diff objects containing 'originalSnippet' and 'replacementSnippet'. Example: [{\"originalSnippet\": \"...\", \"replacementSnippet\": \"...\"}]")] string diffsJson)
+        [Description("JSON array of diff objects containing 'originalSnippet' and 'replacementSnippet'. Example: [{\"originalSnippet\": \"...\", \"replacementSnippet\": \"...\"}]")] string diffsJson,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -178,7 +181,7 @@ public class FileWriteOperations : FileToolsBase
                 return $"ERROR: File '{filePath}' does not exist.";
             }
 
-            string content = File.ReadAllText(fullPath);
+            string content = await File.ReadAllTextAsync(fullPath, cancellationToken);
             bool hasCrLf = content.Contains("\r\n");
             string currentContent = content.Replace("\r\n", "\n");
 
@@ -205,14 +208,14 @@ public class FileWriteOperations : FileToolsBase
                 currentContent = currentContent.Replace("\r\n", "\n").Replace("\n", "\r\n");
             }
 
-            var syntaxCheck = ValidatePreFlightSyntax(filePath, currentContent);
+            var syntaxCheck = await ValidatePreFlightSyntaxAsync(filePath, currentContent, cancellationToken);
             if (!syntaxCheck.IsValid)
             {
                 _context?.Logger.LogEvent("FileTools", "Warning", $"ApplyMultiDiff pre-flight syntax check failed on '{filePath}': {syntaxCheck.ErrorMessage}");
                 return $"PRE-FLIGHT SYNTAX ERROR: The proposed multi-diff would introduce syntax errors in '{filePath}'. Changes were NOT saved. Details: {syntaxCheck.ErrorMessage}. Please fix your replacement snippets.";
             }
 
-            File.WriteAllText(fullPath, currentContent, Encoding.UTF8);
+            await File.WriteAllTextAsync(fullPath, currentContent, Encoding.UTF8, cancellationToken);
             string relDiffPath = GetRelativePath(fullPath);
             _context?.ModifiedFiles.Add(relDiffPath);
             _context?.MilestoneModifiedFiles.Add(relDiffPath);
@@ -256,15 +259,21 @@ public class FileWriteOperations : FileToolsBase
         return (true, null);
     }
 
-    public (bool IsValid, string? ErrorMessage) ValidatePreFlightSyntax(string filePath, string content)
+    public async Task<(bool IsValid, string? ErrorMessage)> ValidatePreFlightSyntaxAsync(string filePath, string content, CancellationToken cancellationToken = default)
     {
         if (_context?.Strategy != null && _context.Strategy is not DotNetStrategy)
         {
             var terminal = new TerminalTools(_repoRoot, _context);
-            var result = _context.Strategy.ValidateSyntaxAsync(filePath, content, terminal, CancellationToken.None).GetAwaiter().GetResult();
+            var result = await _context.Strategy.ValidateSyntaxAsync(filePath, content, terminal, cancellationToken);
             return (result.IsValid, result.ErrorMessage);
         }
 
+        var check = await _syntaxValidator.ValidateAsync(filePath, content, cancellationToken);
+        return (check.IsValid, check.ErrorMessage);
+    }
+
+    public (bool IsValid, string? ErrorMessage) ValidatePreFlightSyntax(string filePath, string content)
+    {
         var check = _syntaxValidator.Validate(filePath, content);
         return (check.IsValid, check.ErrorMessage);
     }

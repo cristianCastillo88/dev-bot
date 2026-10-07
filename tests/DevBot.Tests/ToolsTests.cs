@@ -26,12 +26,12 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_WriteAndReadFileWithRanges_Succeeds()
+    public async Task FileTools_WriteAndReadFileWithRanges_Succeeds()
     {
         var tools = new FileTools(_testDir);
         string sampleCode = "line1\nline2\nline3\nline4\nline5";
 
-        string writeResult = tools.WriteFile("test.txt", sampleCode);
+        string writeResult = await tools.WriteFile("test.txt", sampleCode);
         Assert.Contains("SUCCESS", writeResult);
 
         string readFull = tools.ReadFile("test.txt");
@@ -48,7 +48,7 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ApplyDiff_SurgicalReplacementWorks()
+    public async Task FileTools_ApplyDiff_SurgicalReplacementWorks()
     {
         var tools = new FileTools(_testDir);
         string original = """
@@ -58,9 +58,9 @@ public class ToolsTests : IDisposable
             }
             """;
 
-        tools.WriteFile("Calculator.cs", original);
+        await tools.WriteFile("Calculator.cs", original);
 
-        string diffResult = tools.ApplyDiff(
+        string diffResult = await tools.ApplyDiff(
             "Calculator.cs",
             originalSnippet: "public int Add(int a, int b) => a - b; // bug here",
             replacementSnippet: "public int Add(int a, int b) => a + b;"
@@ -74,13 +74,13 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ApplyDiff_FailsOnNonUniqueSnippet()
+    public async Task FileTools_ApplyDiff_FailsOnNonUniqueSnippet()
     {
         var tools = new FileTools(_testDir);
         string contentWithDuplicates = "duplicate\nsomething\nduplicate";
-        tools.WriteFile("dup.txt", contentWithDuplicates);
+        await tools.WriteFile("dup.txt", contentWithDuplicates);
 
-        string diffResult = tools.ApplyDiff(
+        string diffResult = await tools.ApplyDiff(
             "dup.txt",
             originalSnippet: "duplicate",
             replacementSnippet: "replaced"
@@ -91,13 +91,13 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_SearchCode_FindsOccurrences()
+    public async Task FileTools_SearchCode_FindsOccurrences()
     {
         var tools = new FileTools(_testDir);
-        tools.WriteFile("Service.cs", "public void ProcessOrder() { var x = 42; }");
-        tools.WriteFile("Other.txt", "Random text");
+        await tools.WriteFile("Service.cs", "public void ProcessOrder() { var x = 42; }");
+        await tools.WriteFile("Other.txt", "Random text");
 
-        string result = tools.SearchCode("ProcessOrder");
+        string result = await tools.SearchCode("ProcessOrder");
         Assert.Contains("Service.cs:1", result);
         Assert.Contains("ProcessOrder", result);
     }
@@ -149,15 +149,15 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_TracksModifiedFiles_WhenWriteOrDiffSucceeds()
+    public async Task FileTools_TracksModifiedFiles_WhenWriteOrDiffSucceeds()
     {
         var context = new AgentContext(_testDir, "test-api-key");
         var tools = new FileTools(_testDir, context);
 
-        tools.WriteFile("test_file.txt", "Initial content");
+        await tools.WriteFile("test_file.txt", "Initial content");
         Assert.Contains("test_file.txt", context.ModifiedFiles);
 
-        tools.ApplyDiff("test_file.txt", "Initial content", "Updated content");
+        await tools.ApplyDiff("test_file.txt", "Initial content", "Updated content");
         Assert.Contains("test_file.txt", context.ModifiedFiles);
         Assert.Single(context.ModifiedFiles); // Should not duplicate
     }
@@ -192,7 +192,7 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ApplyDiff_WhitespaceTolerance_MatchesAndReplaces()
+    public async Task FileTools_ApplyDiff_WhitespaceTolerance_MatchesAndReplaces()
     {
         var tools = new FileTools(_testDir);
         string original = """
@@ -206,10 +206,10 @@ public class ToolsTests : IDisposable
             }
             """;
 
-        tools.WriteFile("Service.cs", original);
+        await tools.WriteFile("Service.cs", original);
 
         // Intentionally provide slightly different indentation in originalSnippet
-        string diffResult = tools.ApplyDiff(
+        string diffResult = await tools.ApplyDiff(
             "Service.cs",
             originalSnippet: """
               var x = 10;
@@ -228,11 +228,11 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ListFiles_MatchesFilesWithoutExtensionByDefault()
+    public async Task FileTools_ListFiles_MatchesFilesWithoutExtensionByDefault()
     {
         var tools = new FileTools(_testDir);
-        tools.WriteFile("Dockerfile", "FROM mcr.microsoft.com/dotnet/sdk:8.0");
-        tools.WriteFile("README.md", "# DevBot");
+        await tools.WriteFile("Dockerfile", "FROM mcr.microsoft.com/dotnet/sdk:8.0");
+        await tools.WriteFile("README.md", "# DevBot");
 
         string listing = tools.ListFiles();
         Assert.Contains("Dockerfile", listing);
@@ -240,13 +240,13 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_SearchCode_SkipsMinifiedFiles()
+    public async Task FileTools_SearchCode_SkipsMinifiedFiles()
     {
         var tools = new FileTools(_testDir);
-        tools.WriteFile("bundle.min.js", "function secret_min_token() {}");
-        tools.WriteFile("app.js", "function secret_min_token() {}");
+        await tools.WriteFile("bundle.min.js", "function secret_min_token() {}");
+        await tools.WriteFile("app.js", "function secret_min_token() {}");
 
-        string result = tools.SearchCode("secret_min_token");
+        string result = await tools.SearchCode("secret_min_token");
         Assert.Contains("app.js", result);
         Assert.DoesNotContain("bundle.min.js", result);
     }
@@ -266,14 +266,14 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ApplyDiff_RejectsSyntaxErrors()
+    public async Task FileTools_ApplyDiff_RejectsSyntaxErrors()
     {
         var tools = new FileTools(_testDir);
         string validCode = "public class Calculator { public int Add(int a, int b) => a + b; }";
-        tools.WriteFile("Calculator.cs", validCode);
+        await tools.WriteFile("Calculator.cs", validCode);
 
         // Intentionally introduce broken C# syntax: unclosed expression
-        string diffResult = tools.ApplyDiff(
+        string diffResult = await tools.ApplyDiff(
             "Calculator.cs",
             originalSnippet: "public int Add(int a, int b) => a + b;",
             replacementSnippet: "public int Add(int a, int b) => a + ; // broken syntax"
@@ -285,7 +285,7 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ApplyMultiDiff_AppliesMultipleEditsAtomically()
+    public async Task FileTools_ApplyMultiDiff_AppliesMultipleEditsAtomically()
     {
         var tools = new FileTools(_testDir);
         string original = """
@@ -297,7 +297,7 @@ public class ToolsTests : IDisposable
                 public int B = 2;
             }
             """;
-        tools.WriteFile("Example.cs", original);
+        await tools.WriteFile("Example.cs", original);
 
         string diffsJson = """
             [
@@ -312,7 +312,7 @@ public class ToolsTests : IDisposable
             ]
             """;
 
-        string result = tools.ApplyMultiDiff("Example.cs", diffsJson);
+        string result = await tools.ApplyMultiDiff("Example.cs", diffsJson);
         Assert.Contains("SUCCESS", result);
 
         string updated = File.ReadAllText(Path.Combine(_testDir, "Example.cs"));
@@ -321,11 +321,11 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ApplyMultiDiff_AbortsTransactionIfAnyChunkFails()
+    public async Task FileTools_ApplyMultiDiff_AbortsTransactionIfAnyChunkFails()
     {
         var tools = new FileTools(_testDir);
         string original = "public class Test { public int X = 10; }";
-        tools.WriteFile("Test.cs", original);
+        await tools.WriteFile("Test.cs", original);
 
         string diffsJson = """
             [
@@ -340,7 +340,7 @@ public class ToolsTests : IDisposable
             ]
             """;
 
-        string result = tools.ApplyMultiDiff("Test.cs", diffsJson);
+        string result = await tools.ApplyMultiDiff("Test.cs", diffsJson);
         Assert.Contains("TRANSACTION ABORTED", result);
 
         string fileContent = File.ReadAllText(Path.Combine(_testDir, "Test.cs"));
@@ -348,7 +348,7 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_ScopeGuardrails_BlocksModificationOutsideCurrentMilestone()
+    public async Task FileTools_ScopeGuardrails_BlocksModificationOutsideCurrentMilestone()
     {
         var context = new AgentContext(_testDir, "test-api-key");
         context.CurrentMilestone = new PlanMilestone
@@ -360,11 +360,11 @@ public class ToolsTests : IDisposable
         };
 
         var tools = new FileTools(_testDir, context);
-        tools.WriteFile("src/AllowedFile.cs", "public class AllowedFile {}");
-        tools.WriteFile("src/ForbiddenFile.cs", "public class ForbiddenFile {}");
+        await tools.WriteFile("src/AllowedFile.cs", "public class AllowedFile {}");
+        await tools.WriteFile("src/ForbiddenFile.cs", "public class ForbiddenFile {}");
 
         // Editing forbidden file should be blocked
-        string blockedResult = tools.ApplyDiff(
+        string blockedResult = await tools.ApplyDiff(
             "src/ForbiddenFile.cs",
             "public class ForbiddenFile {}",
             "public class ForbiddenFile { public int X = 1; }"
@@ -374,7 +374,7 @@ public class ToolsTests : IDisposable
         Assert.Contains("Milestone #1", blockedResult);
 
         // Editing allowed file should succeed
-        string allowedResult = tools.ApplyDiff(
+        string allowedResult = await tools.ApplyDiff(
             "src/AllowedFile.cs",
             "public class AllowedFile {}",
             "public class AllowedFile { public int X = 1; }"
@@ -394,7 +394,7 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileTools_PolyglotValidation_DelegatesToActivePythonStrategy()
+    public async Task FileTools_PolyglotValidation_DelegatesToActivePythonStrategy()
     {
         var context = new AgentContext(_testDir, "test-api-key")
         {
@@ -402,7 +402,7 @@ public class ToolsTests : IDisposable
         };
 
         var tools = new FileTools(_testDir, context);
-        string writeResult = tools.WriteFile("script.py", "def add(a, b):\n    return a + b\n");
+        string writeResult = await tools.WriteFile("script.py", "def add(a, b):\n    return a + b\n");
         Assert.Contains("SUCCESS", writeResult);
     }
 
@@ -460,13 +460,13 @@ public class ToolsTests : IDisposable
     }
 
     [Fact]
-    public void FileReadOperations_And_FileWriteOperations_WorkIndependently()
+    public async Task FileReadOperations_And_FileWriteOperations_WorkIndependently()
     {
         var readOps = new FileReadOperations(_testDir);
         var writeOps = new FileWriteOperations(_testDir);
 
         // Write with writeOps
-        string writeRes = writeOps.WriteFile("independent.txt", "line1\nline2\nline3");
+        string writeRes = await writeOps.WriteFile("independent.txt", "line1\nline2\nline3");
         Assert.Contains("SUCCESS", writeRes);
 
         // Read with readOps
@@ -479,11 +479,11 @@ public class ToolsTests : IDisposable
         Assert.Contains("independent.txt", listRes);
 
         // Search with readOps
-        string searchRes = readOps.SearchCode("line2");
+        string searchRes = await readOps.SearchCode("line2");
         Assert.Contains("independent.txt", searchRes);
 
         // Apply diff with writeOps
-        string diffRes = writeOps.ApplyDiff("independent.txt", "line2", "line2_modified");
+        string diffRes = await writeOps.ApplyDiff("independent.txt", "line2", "line2_modified");
         Assert.Contains("SUCCESS", diffRes);
         string updatedRead = readOps.ReadFile("independent.txt");
         Assert.Contains("line2_modified", updatedRead);

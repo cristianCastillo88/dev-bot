@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using DevBot.Cli.Core.Strategies;
 
@@ -98,7 +100,7 @@ public class RepositoryMemoryService : IRepositoryMemoryService
         return null;
     }
 
-    public Task<RepoMap> GenerateRepoMapAsync(string repoRoot, ProjectStackInfo stackInfo, string commitHash, CancellationToken ct = default)
+    public async Task<RepoMap> GenerateRepoMapAsync(string repoRoot, ProjectStackInfo stackInfo, string commitHash, CancellationToken ct = default)
     {
         var map = new RepoMap
         {
@@ -116,47 +118,93 @@ public class RepositoryMemoryService : IRepositoryMemoryService
 
         try
         {
-            var enumOptions = new EnumerationOptions
+            var gitFiles = await TryGetGitFilesAsync(repoRoot, ct);
+            if (gitFiles != null)
             {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible = true
-            };
-
-            var dirs = Directory.EnumerateDirectories(repoRoot, "*", enumOptions)
-                .Where(d => !IsIgnored(Path.GetRelativePath(repoRoot, d)))
-                .ToList();
-
-            foreach (var dir in dirs)
-            {
-                string dirName = Path.GetFileName(dir);
-                string relPath = Path.GetRelativePath(repoRoot, dir).Replace('\\', '/');
-
-                string layer = CategorizeLayer(dirName);
-                layers.Add(layer);
-
-                var files = Directory.EnumerateFiles(dir, "*.*", SearchOption.TopDirectoryOnly)
-                    .Select(Path.GetFileName)
-                    .Where(f => !string.IsNullOrEmpty(f))
-                    .Cast<string>()
+                var dirGroups = gitFiles
+                    .GroupBy(f =>
+                    {
+                        var dir = Path.GetDirectoryName(f);
+                        return string.IsNullOrEmpty(dir) ? "." : dir.Replace('\\', '/');
+                    })
                     .ToList();
 
-                foreach (var ep in candidateEntrypointFiles)
+                foreach (var group in dirGroups)
                 {
-                    if (files.Contains(ep, StringComparer.OrdinalIgnoreCase))
+                    string relPath = group.Key;
+                    string dirName = relPath == "." ? Path.GetFileName(repoRoot) : Path.GetFileName(relPath);
+                    string layer = CategorizeLayer(dirName);
+                    if (relPath != ".")
                     {
-                        entrypoints.Add($"{relPath}/{ep}");
+                        layers.Add(layer);
+                    }
+
+                    var files = group.Select(Path.GetFileName).Where(f => !string.IsNullOrEmpty(f)).Cast<string>().ToList();
+
+                    foreach (var ep in candidateEntrypointFiles)
+                    {
+                        if (files.Contains(ep, StringComparer.OrdinalIgnoreCase))
+                        {
+                            entrypoints.Add(relPath == "." ? ep : $"{relPath}/{ep}");
+                        }
+                    }
+
+                    if (files.Count > 0 && files.Count <= 20 && relPath != ".")
+                    {
+                        components.Add(new RepoComponentInfo
+                        {
+                            Name = dirName,
+                            Path = relPath,
+                            Layer = layer,
+                            KeyTypes = files.Take(8).ToList()
+                        });
                     }
                 }
-
-                if (files.Count > 0 && files.Count <= 20)
+            }
+            else
+            {
+                var enumOptions = new EnumerationOptions
                 {
-                    components.Add(new RepoComponentInfo
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true
+                };
+
+                var dirs = Directory.EnumerateDirectories(repoRoot, "*", enumOptions)
+                    .Where(d => !IsIgnored(Path.GetRelativePath(repoRoot, d)))
+                    .ToList();
+
+                foreach (var dir in dirs)
+                {
+                    string dirName = Path.GetFileName(dir);
+                    string relPath = Path.GetRelativePath(repoRoot, dir).Replace('\\', '/');
+
+                    string layer = CategorizeLayer(dirName);
+                    layers.Add(layer);
+
+                    var files = Directory.EnumerateFiles(dir, "*.*", SearchOption.TopDirectoryOnly)
+                        .Select(Path.GetFileName)
+                        .Where(f => !string.IsNullOrEmpty(f))
+                        .Cast<string>()
+                        .ToList();
+
+                    foreach (var ep in candidateEntrypointFiles)
                     {
-                        Name = dirName,
-                        Path = relPath,
-                        Layer = layer,
-                        KeyTypes = files.Take(8).ToList()
-                    });
+                        if (files.Contains(ep, StringComparer.OrdinalIgnoreCase))
+                        {
+                            entrypoints.Add($"{relPath}/{ep}");
+                        }
+                    }
+
+                    if (files.Count > 0 && files.Count <= 20)
+                    {
+                        components.Add(new RepoComponentInfo
+                        {
+                            Name = dirName,
+                            Path = relPath,
+                            Layer = layer,
+                            KeyTypes = files.Take(8).ToList()
+                        });
+                    }
                 }
             }
         }
@@ -169,7 +217,53 @@ public class RepositoryMemoryService : IRepositoryMemoryService
         map.MainLayers = layers.OrderBy(l => l).ToList();
         map.Components = components.Take(15).ToList();
 
-        return Task.FromResult(map);
+        return map;
+    }
+
+    private static async Task<List<string>?> TryGetGitFilesAsync(string repoRoot, CancellationToken ct)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "ls-files --cached --others --exclude-standard",
+                WorkingDirectory = repoRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8
+            };
+
+            using var process = new Process { StartInfo = psi };
+            var stdout = new StringBuilder();
+
+            process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
+
+            process.Start();
+            process.BeginOutputReadLine();
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+            await process.WaitForExitAsync(linkedCts.Token);
+
+            if (process.ExitCode != 0) return null;
+
+            var lines = stdout.ToString()
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim().Replace('\\', '/'))
+                .Where(l => !string.IsNullOrEmpty(l) && !IsIgnored(l))
+                .ToList();
+
+            return lines.Count > 0 ? lines : null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal executing git ls-files: {ex.Message}");
+            return null;
+        }
     }
 
     private static bool IsIgnored(string relativePath)

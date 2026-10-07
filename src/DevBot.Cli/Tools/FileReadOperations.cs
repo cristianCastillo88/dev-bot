@@ -125,9 +125,10 @@ public class FileReadOperations : FileToolsBase
     }
 
     [KernelFunction, Description("Searches code files for a given text or pattern, returning matching files and snippets with line numbers.")]
-    public string SearchCode(
+    public async Task<string> SearchCode(
         [Description("Search query or text snippet")] string query,
-        [Description("Semicolon-separated file patterns to include, e.g. '*.cs;*.json;*.md'")] string fileExtensions = "*.cs;*.json;*.md;*.txt;*.csproj;*.js;*.ts;*.html;*.css")
+        [Description("Semicolon-separated file patterns to include, e.g. '*.cs;*.json;*.md'")] string fileExtensions = "*.cs;*.json;*.md;*.txt;*.csproj;*.js;*.ts;*.html;*.css",
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -153,8 +154,6 @@ public class FileReadOperations : FileToolsBase
                 extensionSet.Add(ext);
             }
 
-            var results = new List<string>();
-            int matchCount = 0;
             const int maxMatches = 50;
             const long maxFileSizeBytes = 1024 * 1024; // 1 MB limit per file to prevent freeze
 
@@ -165,60 +164,81 @@ public class FileReadOperations : FileToolsBase
                 AttributesToSkip = FileAttributes.Hidden | FileAttributes.System
             };
 
-            var allFiles = Directory.EnumerateFiles(_repoRoot, "*", enumOptions)
-                .Where(f => !IsIgnoredPath(f));
+            var candidateFiles = Directory.EnumerateFiles(_repoRoot, "*", enumOptions)
+                .Where(f => !IsIgnoredPath(f))
+                .Where(file =>
+                {
+                    string fileName = Path.GetFileName(file);
+                    if (fileName.Contains(".min.", StringComparison.OrdinalIgnoreCase) ||
+                        fileName.EndsWith(".map", StringComparison.OrdinalIgnoreCase) ||
+                        fileName.EndsWith(".lock", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
 
-            foreach (var file in allFiles)
+                    if (!matchAll)
+                    {
+                        string ext = Path.GetExtension(file);
+                        if (!extensionSet.Contains(ext)) return false;
+                    }
+
+                    return true;
+                })
+                .ToList();
+
+            var results = new System.Collections.Concurrent.ConcurrentBag<string>();
+            int matchCount = 0;
+
+            var parallelOptions = new ParallelOptions
             {
-                if (matchCount >= maxMatches) break;
+                MaxDegreeOfParallelism = 4,
+                CancellationToken = cancellationToken
+            };
 
-                string fileName = Path.GetFileName(file);
-                if (fileName.Contains(".min.", StringComparison.OrdinalIgnoreCase) ||
-                    fileName.EndsWith(".map", StringComparison.OrdinalIgnoreCase) ||
-                    fileName.EndsWith(".lock", StringComparison.OrdinalIgnoreCase))
+            await Parallel.ForEachAsync(candidateFiles, parallelOptions, async (file, ct) =>
+            {
+                if (Volatile.Read(ref matchCount) >= maxMatches)
                 {
-                    continue;
-                }
-
-                if (!matchAll)
-                {
-                    string ext = Path.GetExtension(file);
-                    if (!extensionSet.Contains(ext)) continue;
+                    return;
                 }
 
                 try
                 {
                     var fileInfo = new FileInfo(file);
-                    if (fileInfo.Length > maxFileSizeBytes) continue;
+                    if (fileInfo.Length > maxFileSizeBytes) return;
 
-                    int lineNum = 1;
-                    foreach (var line in File.ReadLines(file))
+                    var lines = await File.ReadAllLinesAsync(file, ct);
+                    for (int i = 0; i < lines.Length; i++)
                     {
+                        if (Volatile.Read(ref matchCount) >= maxMatches) break;
+
+                        string line = lines[i];
                         if (line.Contains(query, StringComparison.OrdinalIgnoreCase))
                         {
-                            results.Add($"{GetRelativePath(file)}:{lineNum} | {line.Trim()}");
-                            matchCount++;
-                            if (matchCount >= maxMatches) break;
+                            int current = Interlocked.Increment(ref matchCount);
+                            if (current <= maxMatches)
+                            {
+                                results.Add($"{GetRelativePath(file)}:{i + 1} | {line.Trim()}");
+                            }
                         }
-                        lineNum++;
                     }
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal skipping unreadable file '{file}': {ex.Message}");
                 }
-            }
+            });
 
             _context?.Logger.LogEvent("FileTools", "ToolResult", $"SearchCode \"{query}\": {results.Count} occurrences found");
 
-            if (results.Count == 0)
+            if (results.IsEmpty)
             {
                 return $"No matches found for '{query}'.";
             }
 
             var sb = new StringBuilder();
             sb.AppendLine($"Matches for '{query}' (found {results.Count}):");
-            foreach (var result in results)
+            foreach (var result in results.OrderBy(r => r))
             {
                 sb.AppendLine($"- {result}");
             }

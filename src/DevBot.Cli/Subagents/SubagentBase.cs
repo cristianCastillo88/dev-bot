@@ -167,18 +167,27 @@ public abstract class SubagentBase : ISubagent
                 int completionTokens = 0;
                 int totalTokens = 0;
 
-                string json = JsonSerializer.Serialize(usageObj);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
+                if (usageObj is OpenAI.Chat.ChatTokenUsage chatUsage)
+                {
+                    promptTokens = chatUsage.InputTokenCount;
+                    completionTokens = chatUsage.OutputTokenCount;
+                    totalTokens = chatUsage.TotalTokenCount;
+                }
+                else
+                {
+                    string json = JsonSerializer.Serialize(usageObj);
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
 
-                if (root.TryGetProperty("PromptTokens", out var pt) && pt.TryGetInt32(out int pVal)) promptTokens = pVal;
-                else if (root.TryGetProperty("prompt_tokens", out var pt2) && pt2.TryGetInt32(out int pVal2)) promptTokens = pVal2;
+                    if (root.TryGetProperty("PromptTokens", out var pt) && pt.TryGetInt32(out int pVal)) promptTokens = pVal;
+                    else if (root.TryGetProperty("prompt_tokens", out var pt2) && pt2.TryGetInt32(out int pVal2)) promptTokens = pVal2;
 
-                if (root.TryGetProperty("CompletionTokens", out var ct) && ct.TryGetInt32(out int cVal)) completionTokens = cVal;
-                else if (root.TryGetProperty("completion_tokens", out var ct2) && ct2.TryGetInt32(out int cVal2)) completionTokens = cVal2;
+                    if (root.TryGetProperty("CompletionTokens", out var ct) && ct.TryGetInt32(out int cVal)) completionTokens = cVal;
+                    else if (root.TryGetProperty("completion_tokens", out var ct2) && ct2.TryGetInt32(out int cVal2)) completionTokens = cVal2;
 
-                if (root.TryGetProperty("TotalTokenCount", out var tt) && tt.TryGetInt32(out int tVal)) totalTokens = tVal;
-                else if (root.TryGetProperty("total_tokens", out var tt2) && tt2.TryGetInt32(out int tVal2)) totalTokens = tVal2;
+                    if (root.TryGetProperty("TotalTokenCount", out var tt) && tt.TryGetInt32(out int tVal)) totalTokens = tVal;
+                    else if (root.TryGetProperty("total_tokens", out var tt2) && tt2.TryGetInt32(out int tVal2)) totalTokens = tVal2;
+                }
 
                 if (totalTokens == 0 && (promptTokens > 0 || completionTokens > 0))
                 {
