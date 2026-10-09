@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DevBot.Cli.Core;
+using DevBot.Cli.Core.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
@@ -16,11 +17,16 @@ public abstract class SubagentBase : ISubagent
     {
         var builder = Kernel.CreateBuilder();
 
-        // Use Google's official OpenAI-compatible endpoint to guarantee standard tool calling roles
+        var (endpoint, modelId, _) = LlmProviderResolver.Resolve(
+            context.Config.Provider,
+            context.Config.ApiKey,
+            context.Config.ModelId
+        );
+
         builder.AddOpenAIChatCompletion(
-            modelId: context.ModelId,
-            apiKey: context.ApiKey,
-            endpoint: new Uri("https://generativelanguage.googleapis.com/v1beta/openai/")
+            modelId: modelId,
+            apiKey: context.Config.ApiKey,
+            endpoint: endpoint
         );
 
         foreach (var plugin in plugins)

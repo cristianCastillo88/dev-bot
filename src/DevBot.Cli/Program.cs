@@ -38,15 +38,28 @@ public class Program
         using var serviceProvider = BuildServiceProvider();
         var credentialStorage = serviceProvider.GetRequiredService<ICredentialStorageService>();
 
+        string apiKey = ResolveApiKey(options, credentialStorage);
+        var orchestratorFactory = serviceProvider.GetRequiredService<IOrchestratorFactory>();
+
+        if (options.ContinueExecution)
+        {
+            var resumeContext = CreateAgentContext(options, apiKey, AgentMode.Feature);
+            var resumeOrchestrator = orchestratorFactory.Create(resumeContext);
+            return await ExecuteWithCancellationAsync(ct => resumeOrchestrator.ResumeAsync(ct));
+        }
+
         string taskDescription = ResolveTaskDescription(options);
         var mode = ResolveAgentMode(options, taskDescription);
-        string apiKey = ResolveApiKey(options, credentialStorage);
 
         var context = CreateAgentContext(options, apiKey, mode);
-        var orchestratorFactory = serviceProvider.GetRequiredService<IOrchestratorFactory>();
         var orchestrator = orchestratorFactory.Create(context);
 
-        return await ExecuteWithCancellationAsync(orchestrator, taskDescription);
+        if (options.DryRun)
+        {
+            return await ExecuteWithCancellationAsync(ct => orchestrator.PlanOnlyAsync(taskDescription, ct));
+        }
+
+        return await ExecuteWithCancellationAsync(ct => orchestrator.RunAsync(taskDescription, ct));
     }
 
     private static void ConfigureConsole()
@@ -140,7 +153,13 @@ public class Program
 
     private static AgentContext CreateAgentContext(CliOptions options, string apiKey, AgentMode mode)
     {
-        var context = new AgentContext(options.RepoDir, apiKey, options.ModelId)
+        var context = new AgentContext(
+            options.RepoDir,
+            apiKey,
+            options.ModelId,
+            options.Provider,
+            options.Interactive
+        )
         {
             MaxRetries = options.MaxRetries,
             AutoApprove = options.AutoApprove
@@ -149,7 +168,7 @@ public class Program
         return context;
     }
 
-    private static async Task<int> ExecuteWithCancellationAsync(IOrchestrator orchestrator, string taskDescription)
+    private static async Task<int> ExecuteWithCancellationAsync(Func<CancellationToken, Task<bool>> action)
     {
         using var cts = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, e) =>
@@ -162,7 +181,7 @@ public class Program
         Console.CancelKeyPress += cancelHandler;
         try
         {
-            bool success = await orchestrator.RunAsync(taskDescription, cts.Token);
+            bool success = await action(cts.Token);
             return success ? 0 : 1;
         }
         catch (OperationCanceledException)

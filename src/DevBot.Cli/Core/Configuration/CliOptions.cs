@@ -16,6 +16,11 @@ public sealed record CliOptions
     public string? ModeString { get; init; }
     public AgentMode? ExplicitMode { get; init; }
 
+    public bool ContinueExecution { get; init; }
+    public bool DryRun { get; init; }
+    public string? Provider { get; init; }
+    public bool Interactive { get; init; }
+
     public bool ShowHelp { get; init; }
     public bool ShowReport { get; init; }
     public bool ShowLogs { get; init; }

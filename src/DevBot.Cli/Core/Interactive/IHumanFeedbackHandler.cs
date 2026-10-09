@@ -1,3 +1,5 @@
+using DevBot.Cli.Core.Planning;
+
 namespace DevBot.Cli.Core.Interactive;
 
 /// <summary>
@@ -23,6 +25,19 @@ public interface IHumanFeedbackHandler
     /// <returns>Decisión tomada por el desarrollador.</returns>
     Task<HumanDecision> RequestScoutApprovalAsync(
         ScoutPlanSummary plan,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));
+    }
+
+    /// <summary>
+    /// Solicita al desarrollador la aprobación individual antes de ejecutar un hito específico en modo interactivo.
+    /// </summary>
+    /// <param name="milestone">Hito que está por ejecutarse.</param>
+    /// <param name="cancellationToken">Token de cancelación cooperativa.</param>
+    /// <returns>Decisión tomada por el desarrollador (Approved = proceder, Clarified = directivas añadidas, Aborted = abortar o saltar).</returns>
+    Task<HumanDecision> RequestMilestoneApprovalAsync(
+        PlanMilestone milestone,
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));

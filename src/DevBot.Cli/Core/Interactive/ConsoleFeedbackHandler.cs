@@ -53,15 +53,28 @@ public class ConsoleFeedbackHandler : IHumanFeedbackHandler
             AnsiConsole.WriteLine();
         }
 
+        if (!AnsiConsole.Profile.Capabilities.Interactive)
+        {
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));
+        }
+
         const string optApprove = "[green]1. Aprobar plan y proceder a la codificación quirúrgica[/]";
         const string optClarify = "[yellow]2. Agregar aclaraciones / guiar al Coder antes de editar[/]";
         const string optAbort = "[red]3. Abortar misión y descartar cambios[/]";
 
-        var choice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[bold white]¿Cómo deseas proceder con el plan de hitos propuesto?[/]")
-                .AddChoices(optApprove, optClarify, optAbort)
-        );
+        string choice;
+        try
+        {
+            choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold white]¿Cómo deseas proceder con el plan de hitos propuesto?[/]")
+                    .AddChoices(optApprove, optClarify, optAbort)
+            );
+        }
+        catch (NotSupportedException)
+        {
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));
+        }
 
         if (choice == optApprove)
         {
@@ -154,6 +167,81 @@ public class ConsoleFeedbackHandler : IHumanFeedbackHandler
         }
 
         AnsiConsole.MarkupLine("[bold red]❌ Misión cancelada por el desarrollador.[/]\n");
+        return Task.FromResult(new HumanDecision(HumanDecisionType.Aborted));
+    }
+
+    /// <summary>
+    /// Solicita al desarrollador la aprobación individual antes de ejecutar un hito específico en modo --interactive.
+    /// </summary>
+    public Task<HumanDecision> RequestMilestoneApprovalAsync(
+        DevBot.Cli.Core.Planning.PlanMilestone milestone,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(milestone);
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule($"[bold yellow]🎯 Human-in-the-Loop: Aprobación de Hito #{milestone.Order}[/]").RuleStyle("yellow"));
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn(new TableColumn("[bold cyan]Atributo[/]").Width(22));
+        table.AddColumn(new TableColumn("[bold]Detalle del Hito[/]"));
+
+        table.AddRow("[bold]Título[/]", Markup.Escape(milestone.Title));
+        table.AddRow("[bold]Alcance[/]", $"[magenta]{Markup.Escape(milestone.Scope)}[/]");
+        table.AddRow("[bold]Descripción[/]", Markup.Escape(milestone.Description));
+        string targetFiles = milestone.TargetFiles.Count > 0
+            ? string.Join(", ", milestone.TargetFiles.Select(f => $"[yellow]{Markup.Escape(f)}[/]"))
+            : "[dim]Sin archivos definidos[/]";
+        table.AddRow("[bold]Archivos Objetivo[/]", targetFiles);
+        table.AddRow("[bold]Verificación[/]", $"[cyan]`{Markup.Escape(milestone.VerificationCommand)}`[/]");
+
+        AnsiConsole.Write(table);
+
+        if (!AnsiConsole.Profile.Capabilities.Interactive)
+        {
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));
+        }
+
+        const string optApprove = "[green]1. Aprobar y ejecutar este hito[/]";
+        const string optGuidance = "[yellow]2. Inyectar directivas adicionales antes de ejecutar[/]";
+        const string optSkip = "[cyan]3. Saltar este hito[/]";
+        const string optAbort = "[red]4. Abortar misión completa[/]";
+
+        string choice;
+        try
+        {
+            choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"[bold white]¿Deseas ejecutar el Hito #{milestone.Order} ('{milestone.Title}')?[/]")
+                    .AddChoices(optApprove, optGuidance, optSkip, optAbort)
+            );
+        }
+        catch (NotSupportedException)
+        {
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));
+        }
+
+        if (choice == optApprove)
+        {
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Approved));
+        }
+
+        if (choice == optGuidance)
+        {
+            string guidance = AnsiConsole.Prompt(
+                new TextPrompt<string>("[bold yellow]Ingresa directivas específicas para este hito:[/]")
+                    .PromptStyle("cyan")
+                    .ValidationErrorMessage("[red]Las directivas no pueden estar vacías.[/]")
+                    .Validate(text => !string.IsNullOrWhiteSpace(text))
+            );
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Clarified, guidance.Trim()));
+        }
+
+        if (choice == optSkip)
+        {
+            return Task.FromResult(new HumanDecision(HumanDecisionType.Approved, "SKIP_MILESTONE"));
+        }
+
         return Task.FromResult(new HumanDecision(HumanDecisionType.Aborted));
     }
 }

@@ -119,6 +119,97 @@ public class Orchestrator : IOrchestrator
         return true;
     }
 
+    /// <inheritdoc />
+    public async Task<bool> ResumeAsync(CancellationToken cancellationToken = default)
+    {
+        _context.Metrics.Start();
+
+        var plan = await _context.ReadPlanAsync(cancellationToken);
+        if (plan == null || plan.Milestones.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[bold red]❌ No se encontró ningún plan previo en .agent/plan.json para reanudar.[/]");
+            _context.Metrics.Stop();
+            _context.Metrics.ErrorMessage = "No pending plan found in .agent/plan.json.";
+            return false;
+        }
+
+        _context.Plan = plan;
+        string savedTask = await _context.ReadTaskAsync(cancellationToken);
+        _context.TaskDescription = !string.IsNullOrWhiteSpace(savedTask) ? savedTask : plan.TaskDescription;
+
+        ConsoleReportRenderer.PrintStartupBanner(_context, $"[REANUDACIÓN] {_context.TaskDescription}");
+        _context.Logger.LogEvent("Orchestrator", "ResumeExecution", $"Reanudando ejecución para: {_context.TaskDescription}");
+
+        bool isGit = await _gitTools.IsGitRepositoryAsync(cancellationToken);
+        if (!isGit)
+        {
+            AnsiConsole.MarkupLine("[bold red]❌ El directorio especificado no es un repositorio Git válido.[/]");
+            _context.Metrics.Stop();
+            _context.Metrics.ErrorMessage = "Not a git repository.";
+            return false;
+        }
+
+        _context.TargetBranch = await _gitTools.GetCurrentBranchAsync(cancellationToken);
+        _context.OriginalBranch = _context.TargetBranch;
+        _gitTools.EnsureGitExclude(".agent/");
+
+        await DetectStackAndRulesAsync(cancellationToken);
+
+        int startIndex = ResumableExecutionService.GetResumeStartIndex(plan);
+        if (startIndex == -1)
+        {
+            AnsiConsole.MarkupLine("[bold green]✔ Todos los hitos del plan ya fueron completados previamente.[/]");
+            await PublishPullRequestAsync(_context.TaskDescription, cancellationToken);
+            await FinalizeRunAsync(cancellationToken);
+            return true;
+        }
+
+        AnsiConsole.MarkupLine($"[bold cyan]🔁 [[Orchestrator]][/] Reanudando desde Hito #{plan.Milestones[startIndex].Order} ('{Markup.Escape(plan.Milestones[startIndex].Title)}') ({startIndex} de {plan.Milestones.Count} ya completados).");
+
+        if (!await ExecuteMilestonesLoopAsync(cancellationToken, startIndex))
+        {
+            return false;
+        }
+
+        await PublishPullRequestAsync(_context.TaskDescription, cancellationToken);
+        await FinalizeRunAsync(cancellationToken);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> PlanOnlyAsync(string taskDescription, CancellationToken cancellationToken = default)
+    {
+        _context.Metrics.Start();
+        ConsoleReportRenderer.PrintStartupBanner(_context, $"[DRY-RUN] {taskDescription}");
+        _context.Logger.LogEvent("Orchestrator", "DryRun", $"Ejecución Dry-Run (Solo Planificación): {taskDescription}");
+
+        _gitTools.EnsureGitExclude(".agent/");
+        await _context.SaveTaskAsync(taskDescription, cancellationToken);
+
+        await DetectStackAndRulesAsync(cancellationToken);
+
+        if (!await ExecuteScoutPhaseAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        if (!await ExecutePlannerPhaseAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        if (!await ConfirmExecutionPlanAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        AnsiConsole.MarkupLine("\n[bold green]✔ Modo --dry-run finalizado con éxito.[/] El plan arquitectónico ha sido generado y persistido en [yellow].agent/plan.json[/].");
+        AnsiConsole.MarkupLine("[dim]Para ejecutar este plan posteriormente, corre:[/] [bold cyan]devbot --continue[/]\n");
+
+        _context.Metrics.Stop();
+        return true;
+    }
+
     private async Task<bool> InitializeGitWorkspaceAsync(string taskDescription, CancellationToken cancellationToken)
     {
         bool isGit = await _gitTools.IsGitRepositoryAsync(cancellationToken);
@@ -183,7 +274,18 @@ public class Orchestrator : IOrchestrator
         AnsiConsole.Write(new Rule("[bold cyan]Fase 1: Exploración y Análisis de Arquitectura[/]").RuleStyle("cyan"));
         _context.Logger.LogEvent("Orchestrator", "PhaseStart", "Iniciando Fase 1: Scout Agent");
         _context.Metrics.StartPhase("Scout Agent");
-        bool scoutOk = await _scoutAgent.ExecuteAsync(_context, cancellationToken);
+
+        bool scoutOk = false;
+        try
+        {
+            scoutOk = await _scoutAgent.ExecuteAsync(_context, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _context.Logger.LogEvent("Orchestrator", "ScoutException", ex.Message);
+            scoutOk = false;
+        }
+
         _context.Metrics.EndPhase(scoutOk, scoutOk ? "Exploración completada" : "Fallo en exploración");
         _context.Logger.LogEvent("Orchestrator", "PhaseEnd", $"Fase 1 finalizada: {(scoutOk ? "OK" : "FAILED")}");
 
@@ -202,7 +304,18 @@ public class Orchestrator : IOrchestrator
         AnsiConsole.Write(new Rule("[bold cyan]Fase 2: Planificación y Descomposición en Hitos[/]").RuleStyle("cyan"));
         _context.Logger.LogEvent("Orchestrator", "PhaseStart", "Iniciando Fase 2: Planner Agent");
         _context.Metrics.StartPhase("Planner Agent");
-        bool plannerOk = await _plannerAgent.ExecuteAsync(_context, cancellationToken);
+
+        bool plannerOk = false;
+        try
+        {
+            plannerOk = await _plannerAgent.ExecuteAsync(_context, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _context.Logger.LogEvent("Orchestrator", "PlannerException", ex.Message);
+            plannerOk = false;
+        }
+
         _context.Metrics.EndPhase(plannerOk, plannerOk ? "Plan generado" : "Fallo en planificación");
         _context.Logger.LogEvent("Orchestrator", "PhaseEnd", $"Fase 2 finalizada: {(plannerOk ? "OK" : "FAILED")}");
 
@@ -269,19 +382,41 @@ public class Orchestrator : IOrchestrator
         return true;
     }
 
-    private async Task<bool> ExecuteMilestonesLoopAsync(CancellationToken cancellationToken)
+    private async Task<bool> ExecuteMilestonesLoopAsync(CancellationToken cancellationToken, int startFromIndex = 0)
     {
         AnsiConsole.Write(new Rule("[bold yellow]Fase 3: Bucle Quirúrgico de Hitos y Checkpoints[/]").RuleStyle("yellow"));
         string lastCheckpointCommitHash = await _gitTools.GetLastCommitHashAsync(cancellationToken);
         int totalMilestones = _context.Plan!.Milestones.Count;
 
-        for (int mIdx = 0; mIdx < totalMilestones; mIdx++)
+        for (int mIdx = startFromIndex; mIdx < totalMilestones; mIdx++)
         {
             var milestone = _context.Plan.Milestones[mIdx];
             _context.CurrentMilestone = milestone;
             _context.MilestoneModifiedFiles.Clear();
 
             ConsoleReportRenderer.PrintMilestoneHeader(milestone, totalMilestones);
+
+            if (_context.InteractivePerMilestone && !_context.AutoApprove)
+            {
+                var decision = await _context.FeedbackHandler.RequestMilestoneApprovalAsync(milestone, cancellationToken);
+                if (decision.Type == Interactive.HumanDecisionType.Aborted)
+                {
+                    await AbortAndCleanupAsync($"Ejecución abortada por el desarrollador en el Hito #{milestone.Order}.", cancellationToken);
+                    return false;
+                }
+
+                if (decision.AdditionalGuidance == "SKIP_MILESTONE")
+                {
+                    AnsiConsole.MarkupLine($"[yellow]⏭ Hito #{milestone.Order} saltado por decisión del desarrollador.[/]");
+                    continue;
+                }
+
+                if (decision.Type == Interactive.HumanDecisionType.Clarified && !string.IsNullOrWhiteSpace(decision.AdditionalGuidance))
+                {
+                    _context.AdditionalUserGuidance = decision.AdditionalGuidance;
+                    _context.Logger.LogEvent("Orchestrator", "HumanFeedback", $"Directivas del desarrollador para el Hito #{milestone.Order}: {decision.AdditionalGuidance}");
+                }
+            }
 
             bool testsPassed = await ExecuteMilestoneAttemptsAsync(milestone, cancellationToken);
             if (!testsPassed)

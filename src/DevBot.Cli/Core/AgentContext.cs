@@ -79,6 +79,20 @@ public class AgentContext
         set => Config = Config with { AutoApprove = value };
     }
 
+    /// <summary>Proveedor de LLM seleccionado.</summary>
+    public string Provider
+    {
+        get => Config.Provider;
+        set => Config = Config with { Provider = value };
+    }
+
+    /// <summary>Indica si se solicita aprobación interactiva individual por hito.</summary>
+    public bool InteractivePerMilestone
+    {
+        get => Config.InteractivePerMilestone;
+        set => Config = Config with { InteractivePerMilestone = value };
+    }
+
     // =========================================================================
     // Estado Mutable de Ejecución
     // =========================================================================
@@ -168,12 +182,21 @@ public class AgentContext
     /// <param name="repoRoot">Ruta raíz del repositorio de destino.</param>
     /// <param name="apiKey">Clave API para la conexión con el modelo de lenguaje.</param>
     /// <param name="modelId">Identificador del modelo de lenguaje (por defecto gemini-3.5-flash-lite).</param>
-    public AgentContext(string repoRoot, string apiKey, string? modelId = null)
+    /// <param name="provider">Proveedor LLM (por defecto gemini).</param>
+    /// <param name="interactivePerMilestone">Indica si se solicita aprobación interactiva por hito.</param>
+    public AgentContext(
+        string repoRoot,
+        string apiKey,
+        string? modelId = null,
+        string? provider = null,
+        bool interactivePerMilestone = false)
     {
         Workspace = new AgentWorkspace(repoRoot);
         Config = new AgentConfiguration(
             apiKey,
-            modelId ?? "gemini-3.5-flash-lite"
+            modelId ?? "gemini-3.5-flash-lite",
+            provider: provider,
+            interactivePerMilestone: interactivePerMilestone
         );
         Logger = new AgentLogger(Workspace.AgentDir);
     }

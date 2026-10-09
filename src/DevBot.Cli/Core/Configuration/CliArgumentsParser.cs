@@ -12,10 +12,12 @@ public static class CliArgumentsParser
     /// Parsea los argumentos pasados en la línea de comandos a una instancia inmutable de <see cref="CliOptions"/>.
     /// </summary>
     /// <param name="args">Array de argumentos del proceso.</param>
+    /// <param name="globalConfig">Configuración global opcional para proveer valores por defecto.</param>
     /// <returns>Opciones estructuradas.</returns>
-    public static CliOptions Parse(string[] args)
+    public static CliOptions Parse(string[] args, GlobalConfig? globalConfig = null)
     {
         ArgumentNullException.ThrowIfNull(args);
+        globalConfig ??= GlobalConfigService.Load();
 
         bool showHelp = args.Contains("--help", StringComparer.OrdinalIgnoreCase) || 
                         args.Contains("-h", StringComparer.OrdinalIgnoreCase);
@@ -28,13 +30,26 @@ public static class CliArgumentsParser
         string repoDir = GetArg(args, "--dir", "-d") ?? Directory.GetCurrentDirectory();
         string? task = GetArg(args, "--task", "-t");
         string? apiKey = GetArg(args, "--api-key", "-k");
-        string modelId = GetArg(args, "--model", "-m") ?? "gemini-3.5-flash-lite";
+        string modelId = GetArg(args, "--model", "-m") ?? (!string.IsNullOrWhiteSpace(globalConfig.DefaultModel) ? globalConfig.DefaultModel : "gemini-3.5-flash-lite");
 
         string? retriesStr = GetArg(args, "--retries", "-r");
-        int maxRetries = int.TryParse(retriesStr, out int r) && r > 0 ? r : 3;
+        int maxRetries = int.TryParse(retriesStr, out int r) && r > 0 
+            ? r 
+            : (globalConfig.MaxRetries > 0 ? globalConfig.MaxRetries : 3);
 
         bool autoApprove = args.Contains("--yes", StringComparer.OrdinalIgnoreCase) || 
-                           args.Contains("-y", StringComparer.OrdinalIgnoreCase);
+                           args.Contains("-y", StringComparer.OrdinalIgnoreCase) ||
+                           globalConfig.AutoApprove;
+
+        bool continueExecution = args.Contains("--continue", StringComparer.OrdinalIgnoreCase) ||
+                                 args.Contains("-c", StringComparer.OrdinalIgnoreCase);
+
+        bool dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
+
+        string? provider = GetArg(args, "--provider", "-p") ?? globalConfig.DefaultProvider;
+
+        bool interactive = args.Contains("--interactive", StringComparer.OrdinalIgnoreCase) ||
+                            args.Contains("-i", StringComparer.OrdinalIgnoreCase);
 
         string? modeArg = GetArg(args, "--mode", "-M");
         AgentMode? explicitMode = null;
@@ -54,6 +69,10 @@ public static class CliArgumentsParser
             ModelId = modelId,
             MaxRetries = maxRetries,
             AutoApprove = autoApprove,
+            ContinueExecution = continueExecution,
+            DryRun = dryRun,
+            Provider = provider,
+            Interactive = interactive,
             ModeString = modeArg,
             ExplicitMode = explicitMode
         };
@@ -74,9 +93,13 @@ public static class CliArgumentsParser
         table.AddRow("--task", "-t", "Descripción del requerimiento, feature o bugfix a implementar", "[dim](Interactivo)[/]");
         table.AddRow("--mode", "-M", "Modo: auto | feature | bug | refactor | test (Auto-detecta según la tarea si se omite)", "auto");
         table.AddRow("--yes", "-y", "Aprobación automática de la fase Scout sin confirmación interactiva", "false");
+        table.AddRow("--continue", "-c", "Reanuda una ejecución previa desde el último hito no completado en .agent/", "false");
+        table.AddRow("--dry-run", "", "Genera y valida el plan arquitectónico sin modificar archivos ni crear ramas", "false");
+        table.AddRow("--provider", "-p", "Proveedor de modelo LLM: gemini | openai | anthropic", "gemini");
+        table.AddRow("--interactive", "-i", "Solicita aprobación humana individual antes de ejecutar cada hito", "false");
         table.AddRow("--dir", "-d", "Directorio raíz del repositorio de destino", "[dim]Directorio actual[/]");
-        table.AddRow("--api-key", "-k", "Clave API de Google Gemini (o variable GEMINI_API_KEY)", "[dim]Variable de entorno / ~/.devbot/api_key[/]");
-        table.AddRow("--model", "-m", "Modelo de Gemini a utilizar", "gemini-3.5-flash-lite");
+        table.AddRow("--api-key", "-k", "Clave API del proveedor LLM (o variable GEMINI_API_KEY / OPENAI_API_KEY)", "[dim]Variable de entorno / ~/.devbot/api_key[/]");
+        table.AddRow("--model", "-m", "Modelo LLM a utilizar", "gemini-3.5-flash-lite");
         table.AddRow("--retries", "-r", "Máximo de ciclos de corrección Coder-Reviewer", "3");
         table.AddRow("--report", "", "Visualiza el último informe ejecutivo generado en .agent/", "-");
         table.AddRow("--logs", "", "Visualiza las últimas líneas del registro de auditoría en .agent/logs/", "-");
