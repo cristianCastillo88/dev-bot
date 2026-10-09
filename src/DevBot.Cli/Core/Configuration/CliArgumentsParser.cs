@@ -46,6 +46,11 @@ public static class CliArgumentsParser
 
         bool dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
 
+        bool testOnly = args.Contains("--test-only", StringComparer.OrdinalIgnoreCase);
+
+        bool showStats = args.Contains("--stats", StringComparer.OrdinalIgnoreCase) ||
+                         args.Contains("stats", StringComparer.OrdinalIgnoreCase);
+
         string? provider = GetArg(args, "--provider", "-p") ?? globalConfig.DefaultProvider;
 
         bool interactive = args.Contains("--interactive", StringComparer.OrdinalIgnoreCase) ||
@@ -63,6 +68,8 @@ public static class CliArgumentsParser
             ShowHelp = showHelp,
             ShowReport = showReport,
             ShowLogs = showLogs,
+            ShowStats = showStats,
+            TestOnly = testOnly,
             RepoDir = repoDir,
             TaskDescription = task,
             ApiKey = apiKey,
@@ -95,6 +102,8 @@ public static class CliArgumentsParser
         table.AddRow("--yes", "-y", "Aprobación automática de la fase Scout sin confirmación interactiva", "false");
         table.AddRow("--continue", "-c", "Reanuda una ejecución previa desde el último hito no completado en .agent/", "false");
         table.AddRow("--dry-run", "", "Genera y valida el plan arquitectónico sin modificar archivos ni crear ramas", "false");
+        table.AddRow("--test-only", "", "Ejecuta suite de pruebas del stack sin llamadas LLM", "false");
+        table.AddRow("--stats", "", "Visualiza métricas históricas consolidadas de ejecuciones previas", "false");
         table.AddRow("--provider", "-p", "Proveedor de modelo LLM: gemini | openai | anthropic", "gemini");
         table.AddRow("--interactive", "-i", "Solicita aprobación humana individual antes de ejecutar cada hito", "false");
         table.AddRow("--dir", "-d", "Directorio raíz del repositorio de destino", "[dim]Directorio actual[/]");

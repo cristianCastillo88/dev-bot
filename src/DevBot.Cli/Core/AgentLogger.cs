@@ -18,6 +18,7 @@ public sealed class AgentLogger
 
     private readonly List<LogEntry> _entries = [];
     private readonly object _lock = new();
+    private string _lastHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
     /// <summary>
     /// Inicializa una nueva sesión de logging dentro del directorio .agent especificado.
@@ -59,7 +60,7 @@ public sealed class AgentLogger
     public string LatestJsonPath => _latestJsonPath;
 
     /// <summary>
-    /// Registra un evento de auditoría de forma atómica y thread-safe.
+    /// Registra un evento de auditoría de forma atómica y thread-safe con firma criptográfica encadenada.
     /// </summary>
     /// <param name="agentName">Nombre del emisor del evento.</param>
     /// <param name="eventType">Categoría del evento.</param>
@@ -78,6 +79,10 @@ public sealed class AgentLogger
 
         lock (_lock)
         {
+            entry.PreviousHash = _lastHash;
+            entry.Hash = entry.ComputeHash();
+            _lastHash = entry.Hash;
+
             _entries.Add(entry);
             string line = entry.ToString() + Environment.NewLine;
 
@@ -102,6 +107,48 @@ public sealed class AgentLogger
         {
             return [.. _entries];
         }
+    }
+
+    /// <summary>
+    /// Valida la integridad criptográfica de la sesión actual de logging.
+    /// </summary>
+    public (bool IsValid, string? ErrorMessage) VerifyCurrentSessionIntegrity()
+    {
+        lock (_lock)
+        {
+            return VerifyIntegrity(_entries);
+        }
+    }
+
+    /// <summary>
+    /// Valida la integridad criptográfica de una lista de entradas de auditoría (hash chain).
+    /// </summary>
+    public static (bool IsValid, string? ErrorMessage) VerifyIntegrity(IReadOnlyList<LogEntry> entries)
+    {
+        if (entries == null || entries.Count == 0)
+        {
+            return (true, null);
+        }
+
+        string expectedPrev = "0000000000000000000000000000000000000000000000000000000000000000";
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (!string.Equals(entry.PreviousHash, expectedPrev, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, $"Discrepancia en PreviousHash en entrada #{i}: esperaba '{expectedPrev}' pero encontró '{entry.PreviousHash}'.");
+            }
+
+            string expectedHash = entry.ComputeHash();
+            if (!string.Equals(entry.Hash, expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, $"Hash inválido en entrada #{i} ('{entry.EventType}'): contenido alterado.");
+            }
+
+            expectedPrev = entry.Hash;
+        }
+
+        return (true, null);
     }
 
     /// <summary>

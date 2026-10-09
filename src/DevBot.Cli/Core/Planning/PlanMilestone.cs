@@ -10,6 +10,7 @@ public class PlanMilestone
     public List<string> TargetFiles { get; set; } = new();
     public string VerificationCommand { get; set; } = string.Empty;
     public List<string> RequiredSkills { get; set; } = new();
+    public List<string> DependsOn { get; set; } = new();
     public bool IsCompleted { get; set; }
     public string? CheckpointCommitHash { get; set; }
 }

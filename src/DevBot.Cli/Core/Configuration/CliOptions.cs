@@ -20,6 +20,8 @@ public sealed record CliOptions
     public bool DryRun { get; init; }
     public string? Provider { get; init; }
     public bool Interactive { get; init; }
+    public bool TestOnly { get; init; }
+    public bool ShowStats { get; init; }
 
     public bool ShowHelp { get; init; }
     public bool ShowReport { get; init; }

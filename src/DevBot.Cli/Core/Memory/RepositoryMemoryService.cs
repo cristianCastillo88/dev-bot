@@ -66,6 +66,26 @@ public class RepositoryMemoryService : IRepositoryMemoryService
             }
         }
 
+        string? yamlFile = File.Exists(Path.Combine(repoRoot, ".devbotrules.yaml"))
+            ? Path.Combine(repoRoot, ".devbotrules.yaml")
+            : (File.Exists(Path.Combine(repoRoot, ".devbotrules.yml")) ? Path.Combine(repoRoot, ".devbotrules.yml") : null);
+
+        if (yamlFile != null)
+        {
+            try
+            {
+                string yaml = await File.ReadAllTextAsync(yamlFile, ct);
+                var deserializer = new YamlDotNet.Serialization.DeserializerBuilder().Build();
+                var parsed = deserializer.Deserialize<object>(yaml);
+                string? extracted = ExtractYamlRules(parsed);
+                if (!string.IsNullOrWhiteSpace(extracted)) return extracted;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DevBot] Non-fatal reading yaml rules: {ex.Message}");
+            }
+        }
+
         string jsonRulesFile = Path.Combine(repoRoot, "devbot.json");
         if (File.Exists(jsonRulesFile))
         {
@@ -285,5 +305,39 @@ public class RepositoryMemoryService : IRepositoryMemoryService
             "tests" or "test" or "__tests__" => "Testing",
             _ => "Module"
         };
+    }
+
+    private static string? ExtractYamlRules(object? parsed)
+    {
+        if (parsed == null) return null;
+
+        if (parsed is IDictionary<object, object> dict)
+        {
+            foreach (var kv in dict)
+            {
+                if (kv.Key?.ToString()?.Equals("rules", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    if (kv.Value is IList<object> list)
+                    {
+                        return string.Join(Environment.NewLine, list.Select(x => $"- {x}"));
+                    }
+                    return kv.Value?.ToString()?.Trim();
+                }
+            }
+
+            var entries = new List<string>();
+            foreach (var kv in dict)
+            {
+                entries.Add($"- {kv.Key}: {kv.Value}");
+            }
+            return string.Join(Environment.NewLine, entries);
+        }
+
+        if (parsed is IList<object> listItems)
+        {
+            return string.Join(Environment.NewLine, listItems.Select(x => $"- {x}"));
+        }
+
+        return parsed.ToString()?.Trim();
     }
 }

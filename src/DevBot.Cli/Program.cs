@@ -35,6 +35,11 @@ public class Program
             return 1;
         }
 
+        if (options.TestOnly)
+        {
+            return await TestRunnerService.RunTestsAsync(options.RepoDir);
+        }
+
         using var serviceProvider = BuildServiceProvider();
         var credentialStorage = serviceProvider.GetRequiredService<ICredentialStorageService>();
 
@@ -87,6 +92,12 @@ public class Program
         if (options.ShowLogs)
         {
             exitCode = DiagnosticViewService.ShowRecentLogs(options.RepoDir);
+            return true;
+        }
+
+        if (options.ShowStats)
+        {
+            exitCode = HistoricalStatsService.ShowStats(options.RepoDir);
             return true;
         }
 

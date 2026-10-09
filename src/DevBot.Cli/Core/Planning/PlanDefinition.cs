@@ -35,10 +35,57 @@ public class PlanDefinition
             {
                 sb.AppendLine($"- **Skills Requeridos:** {string.Join(", ", m.RequiredSkills)}");
             }
+            if (m.DependsOn.Count > 0)
+            {
+                sb.AppendLine($"- **Dependencias:** {string.Join(", ", m.DependsOn)}");
+            }
             sb.AppendLine();
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Agrupa los hitos en oleadas de ejecución independientes basadas en el grafo de dependencias (DependsOn).
+    /// </summary>
+    /// <returns>Lista de batches de hitos ordenados topológicamente.</returns>
+    public List<List<PlanMilestone>> GetParallelGroups()
+    {
+        if (Milestones.Count == 0) return [];
+
+        bool hasDependencies = Milestones.Any(m => m.DependsOn != null && m.DependsOn.Count > 0);
+        if (!hasDependencies)
+        {
+            return Milestones.OrderBy(m => m.Order).Select(m => new List<PlanMilestone> { m }).ToList();
+        }
+
+        var remaining = new List<PlanMilestone>(Milestones.OrderBy(m => m.Order));
+        var completedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var batches = new List<List<PlanMilestone>>();
+
+        while (remaining.Count > 0)
+        {
+            var currentBatch = remaining.Where(m =>
+                m.DependsOn == null ||
+                m.DependsOn.Count == 0 ||
+                m.DependsOn.All(dep => completedIds.Contains(dep))
+            ).ToList();
+
+            if (currentBatch.Count == 0)
+            {
+                currentBatch.Add(remaining[0]);
+            }
+
+            batches.Add(currentBatch);
+            foreach (var m in currentBatch)
+            {
+                remaining.Remove(m);
+                if (!string.IsNullOrWhiteSpace(m.Id)) completedIds.Add(m.Id);
+                completedIds.Add(m.Order.ToString());
+            }
+        }
+
+        return batches;
     }
 
     public string ToJson()
