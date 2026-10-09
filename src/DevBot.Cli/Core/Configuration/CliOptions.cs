@@ -7,6 +7,7 @@ namespace DevBot.Cli.Core.Configuration;
 /// </summary>
 public sealed record CliOptions
 {
+    public string? Subcommand { get; init; }
     public string? TaskDescription { get; init; }
     public string RepoDir { get; init; } = Directory.GetCurrentDirectory();
     public string? ApiKey { get; init; }

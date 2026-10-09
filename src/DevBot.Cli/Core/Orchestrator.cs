@@ -60,22 +60,6 @@ public class Orchestrator : IOrchestrator
     }
 
     /// <summary>
-    /// Constructor de conveniencia para instanciación directa y compatibilidad retroactiva.
-    /// </summary>
-    /// <param name="context">Contexto global de ejecución del agente.</param>
-    public Orchestrator(AgentContext context)
-        : this(
-            context,
-            new ScoutAgent(),
-            new PlannerAgent(),
-            new CoderAgent(),
-            new ReviewerAgent(),
-            new ProjectStackDetector(),
-            new GitTools(context.RepoRoot))
-    {
-    }
-
-    /// <summary>
     /// Ejecuta el pipeline agéntico completo para la tarea dada.
     /// </summary>
     /// <param name="taskDescription">Descripción del requerimiento solicitado.</param>

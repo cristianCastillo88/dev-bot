@@ -93,12 +93,18 @@ public class DependencyInjectionTests
     }
 
     [Fact]
-    public void Orchestrator_BackwardCompatibilityConstructor_InstantiatesSuccessfully()
+    public void OrchestratorFactory_AssemblesOrchestratorThroughDIP()
     {
+        var services = new ServiceCollection();
+        services.AddDevBotCore();
+
+        using var provider = services.BuildServiceProvider();
+
         string tempDir = Path.GetTempPath();
         var context = new AgentContext(tempDir, "test-api-key");
 
-        var orchestrator = new Orchestrator(context);
+        var factory = provider.GetRequiredService<IOrchestratorFactory>();
+        var orchestrator = factory.Create(context);
 
         Assert.NotNull(orchestrator);
     }
